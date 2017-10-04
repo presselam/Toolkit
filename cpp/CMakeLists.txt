@@ -1,10 +1,19 @@
 cmake_minimum_required(VERSION 2.4)
 
 set(CMAKE_CXX_STANDARD 11)
+set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 
 project(Toolkit)
 
 add_executable(Toolkit src/main.cpp)
+
+add_executable(validate src/validate.cpp)
+include_directories(validate include)
+target_link_libraries(validate ${RELEASE_LIB})
+set_target_properties(validate PROPERTIES FOLDER "Utilities")
+
+install(TARGETS ${DEBUG_BIN}
+        DESTINATION ${CMAKE_SOURCE_DIR}/)
 
 #set(SOURCES
 #        include/Wonder.hpp
@@ -23,8 +32,8 @@ add_executable(Toolkit src/main.cpp)
 # WARN: a problem occured that may allow the program to continue, albeit abnormally
 # ERROR: a problem occured that may lead to a crash
 # PRINTFIELDS: prints all exposed fields, VERY noisy
-target_compile_definitions(${DEBUG_BIN} PRIVATE DEBUG_TRACE DEBUG_WARN DEBUG_ERROR)
-target_compile_definitions(${RELEASE_LIB} PRIVATE DEBUG_WARN DEBUG_ERROR)
+#target_compile_definitions(${DEBUG_BIN} PRIVATE DEBUG_TRACE DEBUG_WARN DEBUG_ERROR)
+#target_compile_definitions(${RELEASE_LIB} PRIVATE DEBUG_WARN DEBUG_ERROR)
 
 # Windows External Libs
 #if (WIN32)

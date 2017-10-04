@@ -7,3 +7,7 @@
 /StructurePrinter/blib
 /Toolkit/blib
 /Utilities/blib
+cpp/build/
+*.bak
+**/pm_to_blib
+**/blib/
