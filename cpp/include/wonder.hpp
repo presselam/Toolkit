@@ -5,15 +5,17 @@
 
 using namespace std::chrono;
 
-class Wonder{
-  public:
+namespace toolkit {
+
+class Wonder {
+ public:
   Wonder(int total, int frequency = 20);
   ~Wonder();
 
   void reset();
   void tick();
 
-  private:
+ private:
   void banner();
   std::string timeString(long millis);
 
@@ -24,3 +26,4 @@ class Wonder{
   int _wide;
   bool _header;
 };
+}
