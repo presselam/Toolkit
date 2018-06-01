@@ -1,0 +1,191 @@
+#! /usr/bin/env perl
+
+use 5.020;
+use warnings;
+use autodie;
+
+use File::Slurp;
+use Getopt::Long;
+
+use Toolkit;
+
+my %opts = ( spooldir => '.', );
+if ( !GetOptions( \%opts, 'id=s', 'package=s@', 'spooldir=s', 'force' ) ) {
+  my %cmake_packages;
+  my $command = read_file("$ENV{'HOME'}/.templates/cmake_packages.txt");
+  eval($command);
+  
+  message('Known Packages');
+  foreach my $known (sort keys %cmake_packages){
+    say("  $known");
+  }
+
+  die("Invalid incantation\n");
+}
+
+main();
+exit(0);
+
+sub main {
+
+  foreach my $req (qw( id )) {
+    die("must specify a valid $req") unless ( exists( $opts{$req} ) );
+  }
+
+  my $exe = $opts{'exe'} || $opts{'id'};
+
+  message('Making Directories');
+  my $dir = "$opts{'spooldir'}/$opts{'id'}";
+  mkdir($dir)           unless ( -d $dir );
+  mkdir("$dir/include") unless ( -d "$dir/include" );
+  mkdir("$dir/src")     unless ( -d "$dir/src" );
+
+  message('Creating CMakeLists.txt');
+  if ( !exists( $opts{'force'} ) && -f "$dir/CMakeLists.txt" ) {
+    warn("CMakeLists.txt already exists");
+  } else {
+    open( my $fh, '>', "$dir/CMakeLists.txt" );
+    $fh->print(
+      qq{cmake_minimum_required(VERSION 2.4)
+
+set(CMAKE_CXX_STANDARD 11)
+set_property(GLOBAL PROPERTY USE_FOLDERS ON)
+
+project($opts{'id'})
+
+set( BASE_DIR \${CMAKE_SOURCE_DIR} )
+set( CMAKE_RUNTIME_OUTPUT_DIRECTORY \${BASE_DIR}/bin )
+foreach( OUTPUTCONFIG \${CMAKE_CONFIGURATION_TYPES} )
+  STRING( TOUPPER \${OUTPUTCONFIG} OUTPUTCONFIG )
+  SET( CMAKE_RUNTIME_OUTPUT_DIRECTORY_\${OUTPUTCONFIG} \${BASE_DIR}/bin )
+endforeach( OUTPUTCONFIG CMAKE_CONFIGURATION_TYPES )
+
+set(TARGET $exe)
+add_executable(\${TARGET} src/main.cpp)
+install(TARGETS \${TARGET} DESTINATION bin)
+}
+    );
+
+    if ( exists( $opts{'package'} ) ) {
+      my %cmake_packages;
+      my $command = read_file("$ENV{'HOME'}/.templates/cmake_packages.txt");
+      eval($command);
+
+      foreach my $package ( @{ $opts{'package'} } ) {
+        if ( exists( $cmake_packages{$package} ) ) {
+          $fh->print("\n$cmake_packages{$package}");
+        }else{
+          message("Unknown package: [$package]");
+        }
+      }
+    }
+
+    close($fh);
+  }
+
+  message('Creating Sources.txt');
+  if ( !exists( $opts{'force'} ) && -f "$dir/src/main.cpp" ) {
+    warn("main.cpp already exists");
+  } else {
+    open( my $fh, '>', "$dir/src/main.cpp" );
+    $fh->print(
+      qq{#include <iostream>
+
+using namespace std;
+
+int main(const int argc, const char** argv){
+  cout << "Hello $opts{'id'}!" << endl;
+}
+}
+    );
+    close($fh);
+  }
+}
+
+__END__ 
+
+=head1 NAME
+
+/home/apressel/bin/cstart - [description here]
+
+=head1 VERSION
+
+This documentation refers to /home/apressel/bin/cstart version 0.0.1
+
+=head1 USAGE
+
+    /home/apressel/bin/cstart [options]
+
+=head1 REQUIRED ARGUMENTS
+
+=over
+
+None
+
+=back
+
+=head1 OPTIONS
+
+=over
+
+None
+
+=back
+
+=head1 DIAGNOSTICS
+
+None.
+
+=head1 CONFIGURATION AND ENVIRONMENT
+
+Requires no configuration files or environment variables.
+
+
+=head1 DEPENDENCIES
+
+None.
+
+
+=head1 BUGS
+
+None reported.
+Bug reports and other feedback are most welcome.
+
+
+=head1 AUTHOR
+
+Andrew Pressel C<< apressel@nextgenfed.com >>
+
+
+=head1 COPYRIGHT
+
+Copyright (c) 2017, Andrew Pressel C<< <apressel@nextgenfed.com> >>. All rights reserved.
+
+This module is free software. It may be used, redistributed
+and/or modified under the terms of the Perl Artistic License
+(see http://www.perl.com/perl/misc/Artistic.html)
+
+
+=head1 DISCLAIMER OF WARRANTY
+
+BECAUSE THIS SOFTWARE IS LICENSED FREE OF CHARGE, THERE IS NO WARRANTY
+FOR THE SOFTWARE, TO THE EXTENT PERMITTED BY APPLICABLE LAW. EXCEPT WHEN
+OTHERWISE STATED IN WRITING THE COPYRIGHT HOLDERS AND/OR OTHER PARTIES
+PROVIDE THE SOFTWARE "AS IS" WITHOUT WARRANTY OF ANY KIND, EITHER
+EXPRESSED OR IMPLIED, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE. THE
+ENTIRE RISK AS TO THE QUALITY AND PERFORMANCE OF THE SOFTWARE IS WITH
+YOU. SHOULD THE SOFTWARE PROVE DEFECTIVE, YOU ASSUME THE COST OF ALL
+NECESSARY SERVICING, REPAIR, OR CORRECTION.
+
+IN NO EVENT UNLESS REQUIRED BY APPLICABLE LAW OR AGREED TO IN WRITING
+WILL ANY COPYRIGHT HOLDER, OR ANY OTHER PARTY WHO MAY MODIFY AND/OR
+REDISTRIBUTE THE SOFTWARE AS PERMITTED BY THE ABOVE LICENCE, BE
+LIABLE TO YOU FOR DAMAGES, INCLUDING ANY GENERAL, SPECIAL, INCIDENTAL,
+OR CONSEQUENTIAL DAMAGES ARISING OUT OF THE USE OR INABILITY TO USE
+THE SOFTWARE (INCLUDING BUT NOT LIMITED TO LOSS OF DATA OR DATA BEING
+RENDERED INACCURATE OR LOSSES SUSTAINED BY YOU OR THIRD PARTIES OR A
+FAILURE OF THE SOFTWARE TO OPERATE WITH ANY OTHER SOFTWARE), EVEN IF
+SUCH HOLDER OR OTHER PARTY HAS BEEN ADVISED OF THE POSSIBILITY OF
+SUCH DAMAGES.
+
