@@ -2,9 +2,12 @@ package com.whistlinglemons.toolkit.test;
 
 import static org.junit.Assert.*;
 
+import java.util.List;
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -41,7 +44,29 @@ public class UtilitiesTest {
 
 	@Test
 	public void testDumpTable() {
-		fail("Not yet implemented");
+		
+		ArrayList<List> table = new ArrayList<List>();
+		table.add((List) Arrays.asList("City","Latitude", "Longitude"	));
+		table.add((List) Arrays.asList("Dayton","9.759444", "-84.191667"	));
+		table.add((List) Arrays.asList("Las Vegas","36.175", "-115.136389"));
+		table.add((List) Arrays.asList("Pressel", "51.578989", "12.704314"));
+		
+		Utilities.dumpTable(table);
+		String result = mBaos.toString();
+		
+		String checks[] = { 
+				"\\+\\-{11}\\+\\-{11}\\+\\-{13}\\+",
+				"\\| City      \\| Latitude  \\| Longitude   \\|",
+				"\\| Dayton    \\| 9.759444  \\| -84.191667  \\|",
+				"\\| Las Vegas \\| 36.175    \\| -115.136389 \\|",
+				"\\| Pressel   \\| 51.578989 \\| 12.704314   \\|"
+		};
+		
+		for(String regex : checks){
+			Pattern pat = Pattern.compile(regex);
+			Matcher mat = pat.matcher(result);
+			assertTrue(mat.find());
+		}
 	}
 
 	@Test
@@ -61,20 +86,32 @@ public class UtilitiesTest {
 		
 		Utilities.message("This is a message test");
 		String result = mBaos.toString();
-		System.err.println(result);
 
-		String checks[] = { "====>", "(Mon|Tue|Wed|Thur|Fri)", "(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)",
+		String checks[] = { "====>", "(Mon|Tue|Wed|Thu|Fri|Sat|Sun)", "(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)",
 				"\\d{2}", "\\d{2}:\\d{2}:\\d{2}", "\\d{4}", "This is a message test" };
 		
 		for(String regex : checks){
-			System.err.println(regex + " -- " + result.matches(".*" + regex + ".*"));
-			assertTrue(result.matches(".*" + regex + ".*"));
+			Pattern pat = Pattern.compile(regex);
+			Matcher mat = pat.matcher(result);
+			assertTrue(mat.find());
 		}
 	}
 
 	@Test
 	public void testTrace() {
-		fail("Not yet implemented");
+		
+		Utilities.trace(1,3.14159,"astring", new Object());
+		String result = mBaos.toString();
+		
+		String checks[] = { "\\[TRACE\\]", "UtilitiesTest::testTrace",
+				"\\(1,3.14159,astring,java.lang.Object@[0-9a-fA-F]+\\)"
+		};
+		
+		for(String regex : checks){
+			Pattern pat = Pattern.compile(regex);
+			Matcher mat = pat.matcher(result);
+			assertTrue(mat.find());
+		}
 	}
 
 }
