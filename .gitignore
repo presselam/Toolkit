@@ -11,3 +11,5 @@ cpp/build/
 *.bak
 **/pm_to_blib
 **/blib/
+**/MYMETA.*
+**/Makefile.*
