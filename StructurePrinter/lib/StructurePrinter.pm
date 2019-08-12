@@ -16,6 +16,7 @@ our %dispatch = (
   SCALAR => \&_printScalar,
 );
 
+
 our $match = join( '|', keys(%dispatch) );
 
 sub import {
@@ -36,7 +37,7 @@ sub _walker {
 
 #  my $ref = scalar($obj);
 #  my $ref = ref($obj);
-  my ($type) = $obj =~ /($match)/o;
+  my ($type) = $obj =~ /($match)\(/o;
 
   if( defined($type) && exists( $dispatch{$type} ) ) {
     return $dispatch{$type}->( $obj, $ts );

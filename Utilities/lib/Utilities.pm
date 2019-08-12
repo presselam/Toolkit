@@ -11,8 +11,8 @@ use Term::ANSIColor qw( :constants );
 
 use StructurePrinter;
 
-our @EXPORT_OK
-    = qw( dump_table quick startlog query message walker compareThingy compareArray compareHash wrapper variables mean stddev printStats convertSeconds red green yellow blue magenta white reload_module backspace );
+our @EXPORT_OK =
+  qw( dump_table quick startlog query message walker compareThingy compareArray compareHash wrapper variables mean stddev printStats convertSeconds red green yellow blue magenta white reload_module backspace );
 
 our %EXPORT_TAGS = (
     COMPARE => [qw( compareThingy compareHash compareArray )],
@@ -28,6 +28,12 @@ our %EXPORT_TAGS = (
 our $VERSION = '0.16.0';
 
 our %MTIME;
+
+sub clean{
+  my ($str) = @_;
+  $str =~ s/\x1b\[\d+m//go;
+  return $str;
+}
 
 sub dump_table {
     my %args = @_;
@@ -53,7 +59,7 @@ sub dump_table {
         join(
             ' | ',
             map { ' ' x ( $widths[$_] - $row->[$_][0]  ) . $row->[$_][1] }
-                0 .. $#{$row}
+                0 .. ($#{$row}-1)
         ),
         ' |'
     );
@@ -68,7 +74,7 @@ sub dump_table {
 
     foreach $row (@table) {
         say('| ',
-            join( ' | ', map { ' ' x ( $widths[$_] - $row->[$_][0] ) . $row->[$_][1] } 0 .. $#{$row}),
+            join( ' | ', map { ' ' x ( $widths[$_] - $row->[$_][0] ) . $row->[$_][1] } 0 .. ($#{$row}-1)),
             ' |'
         );
     }
@@ -127,7 +133,7 @@ sub green {
 
 sub yellow {
     my ( $str, $format ) = @_;
-    return YELLOW . $str . RESET;
+  return YELLOW . BOLD . $str . RESET;
 }
 
 sub blue {
@@ -142,7 +148,7 @@ sub magenta {
 
 sub white {
     my ( $str, $format ) = @_;
-    return WHITE . $str . RESET;
+  return WHITE . BOLD . $str . RESET;
 }
 
 sub convertSeconds {
@@ -209,8 +215,8 @@ sub wrapper {
 
     no strict 'refs';
     my $caller = ( caller() )[0];
-    my $symbol
-        = ( $subroutine =~ /::/ ? $subroutine : "$caller\::$subroutine" );
+  my $symbol =
+    ($subroutine =~ /::/ ? $subroutine : "$caller\::$subroutine");
     my $orig = *{$symbol}{CODE};
     *{$symbol} = sub {
 

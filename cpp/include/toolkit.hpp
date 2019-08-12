@@ -30,7 +30,6 @@ class streamer {
 
   template <typename T>
   const streamer& operator<<(const T& v) const {
-    cout << typeid(v).name() << endl;
     out << "[\033[32m" << v << "\033[0m]";
     return *this;
   }
