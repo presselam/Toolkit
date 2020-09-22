@@ -13,3 +13,4 @@ cpp/build/
 **/blib/
 **/MYMETA.*
 **/Makefile.*
+**/Makefile

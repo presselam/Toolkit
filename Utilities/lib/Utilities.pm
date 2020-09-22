@@ -12,10 +12,10 @@ use Term::ANSIColor qw( :constants );
 use StructurePrinter;
 
 our @EXPORT_OK =
-  qw( dump_table quick startlog query message walker compareThingy compareArray compareHash wrapper variables mean stddev printStats convertSeconds red green yellow blue magenta white reload_module backspace );
+  qw( dump_table build_table quick startlog query message walker compareArray compareHash wrapper variables mean stddev printStats convertSeconds red green yellow blue magenta white reload_module backspace );
 
 our %EXPORT_TAGS = (
-    COMPARE => [qw( compareThingy compareHash compareArray )],
+    COMPARE => [qw( compareHash compareArray )],
     LOG     => [qw( startlog )],
     MISC    => [qw( quick message walker wrapper reload_module backspace)],
     SQL     => [qw( query variables )],
@@ -25,7 +25,7 @@ our %EXPORT_TAGS = (
     ALL     => [@EXPORT_OK],
 );
 
-our $VERSION = '0.16.0';
+our $VERSION = '0.23.0';
 
 our %MTIME;
 
@@ -36,6 +36,11 @@ sub clean{
 }
 
 sub dump_table {
+  my @retval = build_table(@_);
+  say(join("\n", @retval));
+}
+
+sub build_table{
     my %args = @_;
 
     my @table = @{ $args{'table'} };
@@ -44,26 +49,27 @@ sub dump_table {
     foreach my $ref (@table) {
         foreach my $i ( 0 .. scalar( @{$ref} ) ) {
             my $tmp = $ref->[$i];
-            $tmp =~ s/\x1b\[[0-9;]*m//g;
+            $tmp =~ s/\x1b\[[0-9;]+m//g;
             $tmp = length($tmp);
             $widths[$i] = $tmp if( $tmp > $widths[$i] );
-            $ref->[$i] = [ $tmp, $ref->[$i] ];
+            $ref->[$i] = [ $tmp, "$ref->[$i]" ];
         }
     }
 
+    my @retval;
     my $hdr = '+-' . join( '-+-', map { '-' x $_ } @widths ) . '-+';
 
-    say($hdr);
+    push(@retval, $hdr);
     my $row = shift @table;
-    say('| ',
+    push(@retval, '| '.
         join(
             ' | ',
-            map { ' ' x ( $widths[$_] - $row->[$_][0]  ) . $row->[$_][1] }
+            map { $row->[$_][1] .  ' ' x ( $widths[$_] - $row->[$_][0]  ) }
                 0 .. ($#{$row}-1)
-        ),
+        ).
         ' |'
     );
-    say($hdr);
+    push(@retval, $hdr);
 
     if( exists( $args{'sort'} ) ) {
         @table = sort {
@@ -73,12 +79,14 @@ sub dump_table {
     }
 
     foreach $row (@table) {
-        say('| ',
-            join( ' | ', map { ' ' x ( $widths[$_] - $row->[$_][0] ) . $row->[$_][1] } 0 .. ($#{$row}-1)),
+        push(@retval, '| '.
+            join( ' | ', map { $row->[$_][1] . ' ' x ( $widths[$_] - $row->[$_][0] ) } 0 .. ($#{$row}-1)).
             ' |'
         );
     }
-    say($hdr);
+    push(@retval, $hdr);
+
+    return wantarray ? @retval : join("\n", @retval);
 }
 
 sub backspace {
@@ -133,7 +141,8 @@ sub green {
 
 sub yellow {
     my ( $str, $format ) = @_;
-  return YELLOW . BOLD . $str . RESET;
+#  return YELLOW . BOLD . $str . RESET;
+  return "\e[38;5;226m" . $str . RESET;
 }
 
 sub blue {
@@ -229,6 +238,8 @@ sub wrapper {
 }
 
 sub quick {
+    push(@_, $_) unless (@_);
+
     my $autoflush = $|;
     $| = 1;
     print( "[", join( "][", map { yellow($_) } @_ ), "]\n" );
