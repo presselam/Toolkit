@@ -12,10 +12,10 @@ use Term::ANSIColor qw( :constants );
 use StructurePrinter;
 
 our @EXPORT_OK =
-  qw( dump_table build_table quick startlog query message walker compareThingy compareArray compareHash wrapper variables mean stddev printStats convertSeconds red green yellow blue magenta white reload_module backspace );
+  qw( dump_table build_table quick startlog query message walker compareArray compareHash wrapper variables mean stddev printStats convertSeconds red green yellow blue magenta white reload_module backspace );
 
 our %EXPORT_TAGS = (
-    COMPARE => [qw( compareThingy compareHash compareArray )],
+    COMPARE => [qw( compareHash compareArray )],
     LOG     => [qw( startlog )],
     MISC    => [qw( quick message walker wrapper reload_module backspace)],
     SQL     => [qw( query variables )],
@@ -25,7 +25,7 @@ our %EXPORT_TAGS = (
     ALL     => [@EXPORT_OK],
 );
 
-our $VERSION = '0.16.0';
+our $VERSION = '0.23.0';
 
 our %MTIME;
 

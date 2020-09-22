@@ -9,6 +9,6 @@ WriteMakefile(
     Profiler => 1.0,
     PSInfo   => 0.9,
     StructurePrinter => 0.9,
-    Utilities => 0.16,
+    Utilities => 0.23.0,
   },                       # e.g., Module::Name => 1.1
 );
