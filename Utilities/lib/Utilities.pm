@@ -8,16 +8,17 @@ use Getopt::Long;
 use IO::File;
 use POSIX qw( strftime );
 use Term::ANSIColor qw( :constants );
+use Term::ReadKey;
 
 use StructurePrinter;
 
-our @EXPORT_OK =
-  qw( dump_table build_table quick startlog query message walker compareArray compareHash wrapper variables mean stddev printStats convertSeconds red green yellow blue magenta white reload_module backspace );
+our @EXPORT_OK
+    = qw( dump_table build_table quick startlog query message message_err message_alert walker compareArray compareHash wrapper variables mean stddev printStats convertSeconds red green yellow blue magenta white reload_module backspace );
 
 our %EXPORT_TAGS = (
     COMPARE => [qw( compareHash compareArray )],
     LOG     => [qw( startlog )],
-    MISC    => [qw( quick message walker wrapper reload_module backspace)],
+  MISC    => [qw( quick message message_err message_alert walker wrapper reload_module backspace)],
     SQL     => [qw( query variables )],
     STATS   => [qw( mean stddev )],
     TIME    => [qw( convertSeconds )],
@@ -25,7 +26,7 @@ our %EXPORT_TAGS = (
     ALL     => [@EXPORT_OK],
 );
 
-our $VERSION = '0.23.0';
+our $VERSION = '0.24.0';
 
 our %MTIME;
 
@@ -43,46 +44,118 @@ sub dump_table {
 sub build_table{
     my %args = @_;
 
-    my @table = @{ $args{'table'} };
+  my @base = @{ $args{'table'} };
+  my @table;
 
     my @widths;
-    foreach my $ref (@table) {
-        foreach my $i ( 0 .. scalar( @{$ref} ) ) {
-            my $tmp = $ref->[$i];
-            $tmp =~ s/\x1b\[[0-9;]+m//g;
-            $tmp = length($tmp);
+  foreach my $row ( 0 .. $#base ) {
+    my $ref  = $base[$row];
+    my $cols = $#{$ref};
+
+    my @rowRef;
+    push( @table, \@rowRef );
+
+    foreach my $i ( 0 .. $cols ) {
+      my @lines = split( /\n/, $ref->[$i] );
+      my $first = shift(@lines);
+
+      my $clean = $first;
+      $clean =~ s/\x1b\[[0-9;]+m//g;
+      my $tmp = length($clean);
             $widths[$i] = $tmp if( $tmp > $widths[$i] );
-            $ref->[$i] = [ $tmp, "$ref->[$i]" ];
+      push( @rowRef, [ $tmp, "$ref->[$i]" ] );
+
         }
     }
 
     my @retval;
     my $hdr = '+-' . join( '-+-', map { '-' x $_ } @widths ) . '-+';
+  my ( $x, $y, $xp, $yp ) = GetTerminalSize();
+
+  if ( length($hdr) > $x ) {
+    @retval = _vertTable( $x, \@table, \@widths );
+  } else {
+    @retval = _wideTable( $hdr, \@table, \@widths );
+  }
+
+  return wantarray ? @retval : join( "\n", @retval );
+}
+
+sub _vertTable {
+  my ( $wide, $tblRef, $wideRef ) = @_;
+
+  my @table = @{$tblRef};
+  my @retval;
+
+  my $hdrWide = 0;
+  my $hdr     = shift(@table);
+  foreach my $ref ( @{$hdr} ) {
+    my $tmp = length( $ref->[1] );
+    $hdrWide = $tmp if ( $tmp > $hdrWide );
+  }
+
+  my $i     = int( scalar(@table) / 10 ) + 1;
+  my $count = 1;
+  foreach my $row (@table) {
+    my $rowNum = ' ' x ( $i - length($count) + 1 ) . "$count row ";
+    my $len    = ( $wide - ( length($rowNum) ) ) / 2;
+    my $banner = '*' x $len . $rowNum . '*' x $len;
+    push( @retval, substr( $banner, 0, $wide - 1 ) );
+
+    foreach my $col ( 0 .. ( scalar( @{$hdr} ) - 1 ) ) {
+      my $lead = $hdr->[$col][1];
+      my @line = split( /\n/, $row->[$col][1] );
+      foreach my $ln (@line) {
+        push( @retval, sprintf( "%$hdrWide\s : %s", $lead, $ln ) );
+        $lead = '';
+      }
+    }
+    $count++;
+  }
+
+  return wantarray ? @retval : join( "\n", @retval );
+}
+
+sub _wideTable {
+  my ( $hdr, $tblRef, $wideRef ) = @_;
+  my @table  = @{$tblRef};
+  my @widths = @{$wideRef};
+
+  my @retval;
 
     push(@retval, $hdr);
     my $row = shift @table;
-    push(@retval, '| '.
-        join(
-            ' | ',
-            map { $row->[$_][1] .  ' ' x ( $widths[$_] - $row->[$_][0]  ) }
-                0 .. ($#{$row}-1)
-        ).
+  push(
+    @retval,
         ' |'
+        . join( ' | ',
+      map { $row->[$_][1] . ' ' x ( $widths[$_] - $row->[$_][0] ) }
+          0 .. ( $#{$row} ) )
+        . ' |'
     );
     push(@retval, $hdr);
 
-    if( exists( $args{'sort'} ) ) {
-        @table = sort {
-                   $a->[ $args{'sort'} ] <=> $b->[ $args{'sort'} ]
-                || $a->[ $args{'sort'} ] cmp $b->[ $args{'sort'} ]
-        } @table;
-    }
+  foreach $row (@table) {
+    my $limit = 1;
+    for ( my $bix = 0; $bix < $limit; $bix++ ) {
+      my @buffer;
+      foreach my $idx ( 0 .. $#{$row} ) {
+        my @lines = split( /\n/, $row->[$idx][1] );
+        my $sz    = scalar(@lines);
+        $limit = $sz if ( $sz > $limit );
 
-    foreach $row (@table) {
-        push(@retval, '| '.
-            join( ' | ', map { $row->[$_][1] . ' ' x ( $widths[$_] - $row->[$_][0] ) } 0 .. ($#{$row}-1)).
-            ' |'
-        );
+        if ( $sz > $bix ) {
+          my $clean = $lines[$bix];
+          $clean =~ s/\x1b\[[0-9;]+m//g;
+          my $tmp = length($clean);
+          push( @buffer, $lines[$bix] . ' ' x ( $widths[$idx] - $tmp ) );
+        } else {
+          push( @buffer, ' ' x $widths[$idx] );
+    }
+      }
+      push( @retval, '| ' . join( ' | ', @buffer ) . ' |' );
+
+    }
     }
     push(@retval, $hdr);
 
@@ -224,8 +297,8 @@ sub wrapper {
 
     no strict 'refs';
     my $caller = ( caller() )[0];
-  my $symbol =
-    ($subroutine =~ /::/ ? $subroutine : "$caller\::$subroutine");
+  my $symbol
+      = ( $subroutine =~ /::/ ? $subroutine : "$caller\::$subroutine" );
     my $orig = *{$symbol}{CODE};
     *{$symbol} = sub {
 
@@ -283,7 +356,8 @@ sub compareHash {
             my $o_val = $obs{$key};
             if( $a_val ne $o_val ) {
                 message(
-                    "[$key] values differ:", "  Observed := [$o_val]",
+          "[$key] values differ:",
+          "  Observed := [$o_val]",
                     "  Actual   := [$a_val]"
                 );
             }
@@ -306,6 +380,16 @@ sub compareArray {
 sub message {
     my $tmstmp = "====> " . scalar( localtime(time) );
     print( "\n", join( "\n", $tmstmp, @_ ), "\n" );
+}
+
+sub message_alert {
+  my $tmstmp = "====> " . scalar( localtime(time) );
+  print( "\n", join( "\n", $tmstmp, map{ green($_) } @_ ), "\n" );
+}
+
+sub message_err {
+  my $tmstmp = "====> " . scalar( localtime(time) );
+  print( "\n", join( "\n", $tmstmp, map{ red($_) } @_ ), "\n" );
 }
 
 sub query {
@@ -354,10 +438,9 @@ sub startlog {
     mkdir($logdir) unless( -e $logdir );
 
     my $logfile = "$logdir/";
-    $logfile .= join(
-        '', ( $args->{prefix} ? "$args->{prefix}." : "" ), "$timestr.",
-        "$$.", 'log'
-    );
+  $logfile .= join( '',
+    ( $args->{prefix} ? "$args->{prefix}." : "" ),
+    "$timestr.", "$$.", 'log' );
 
     if( exists( $args->{nolog} ) ) {
         if( $args->{nolog} =~ /STDOUT/io ) {
