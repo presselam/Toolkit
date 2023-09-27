@@ -1,0 +1,258 @@
+#!/usr/bin/env perl
+
+use 5.020;
+use warnings;
+use autodie;
+
+use Cwd qw( abs_path );
+use File::Basename;
+use File::Slurp;
+use Getopt::Long;
+use Text::Template;
+
+use Toolkit;
+
+my %opts = (
+  spooldir  => '.',
+  namespace => 'com.whistlinglemons',
+  version   => '1.8',
+);
+if (
+  !GetOptions(
+    \%opts,       'id=s',       'namespace=s', 'version=s',
+    'package=s@', 'spooldir=s', 'exe',
+  )
+    )
+{
+  die("Invalid incantation\n");
+}
+
+main();
+exit(0);
+
+sub main {
+
+  foreach my $req (qw( id spooldir version)) {
+    die("must specify a valid $req") unless ( exists( $opts{$req} ) );
+  }
+
+  my $ns = "$opts{'namespace'}.$opts{'id'}";
+
+  message('Making Directories');
+  my $dir = abs_path("$opts{'spooldir'}/$opts{'id'}");
+  mkdir($dir) unless ( -d $dir );
+  mkdir("$dir/src") unless ( -d "$dir/src" );
+
+  message('Creating pom');
+  my $pom      = read_file("$ENV{'HOME'}/.templates/pomxml");
+  my $template = Text::Template->new( TYPE => 'STRING', SOURCE => $pom );
+
+  my $packages   = getPackageList();
+  my $executable = '';
+  if ( $opts{'exe'} ) {
+    $executable = qq{<plugin>
+        <artifactId>maven-jar-plugin</artifactId>
+        <version>3.3.0</version>
+        <configuration>
+          <archive>
+            <manifest>
+              <addClasspath>true</addClasspath>
+              <classpathPrefix>\${project.build.directory}/lib/</classpathPrefix>
+              <mainClass>$ns.Main</mainClass>
+            </manifest>
+          </archive>
+          <descriptorRefs>
+            <descriptorRef>jar-with-dependencies</descriptorRef>
+          </descriptorRefs>
+        </configuration>
+    </plugin>
+    <plugin>
+      <groupId>org.apache.maven.plugins</groupId>
+      <artifactId>maven-dependency-plugin</artifactId>
+      <executions>
+        <execution>
+          <id>copy-dependencies</id>
+          <phase>prepare-package</phase>
+          <goals>
+            <goal>copy-dependencies</goal>
+          </goals>
+          <configuration>
+            <outputDirectory>\${project.build.directory}/lib</outputDirectory>
+            <overWriteReleases>false</overWriteReleases>
+            <overWriteSnapshots>false</overWriteSnapshots>
+            <overWriteIfNewer>true</overWriteIfNewer>
+          </configuration>
+        </execution>
+      </executions>
+    </plugin>};
+  }
+
+  open( my $fh, '>', "$dir/pom.xml" );
+  $fh->print(
+    $template->fill_in(
+      HASH => {
+        artifact   => $opts{'id'},
+        packages   => $packages,
+        version    => $opts{'version'},
+        executable => $executable,
+      }
+    )
+  );
+  close($fh);
+
+  message('Creating Sources');
+  my $path = $ns =~ s/\./\//gor;
+  $path = "$dir/src/main/java/$path";
+
+  my $tree = '';
+  foreach my $node ( split( /\//, $path ) ) {
+    $tree .= "/$node";
+    next if ( -d $tree );
+    mkdir($tree);
+  }
+
+  my $file = "$tree/Main.java";
+
+  if ( -f $file ) {
+    warn( basename($file) . ' already exists' );
+  } else {
+    my $py       = read_file("$ENV{'HOME'}/.templates/javaclass");
+    my $template = Text::Template->new( TYPE => 'STRING', SOURCE => $py );
+    open( my $fh, '>', $file );
+    $fh->print(
+      $template->fill_in(
+        HASH => {
+          namespace => $ns,
+          artifact  => $opts{'id'}
+        }
+      )
+    );
+    close($fh);
+  }
+
+  message('Creating Resources');
+  $path = "$dir/src/main/resources";
+
+  my $tree = '';
+  foreach my $node ( split( /\//, $path ) ) {
+    $tree .= "/$node";
+    next if ( -d $tree );
+    mkdir($tree);
+  }
+
+  $file = "$tree/log4j2.xml";
+  my $py       = read_file("$ENV{'HOME'}/.templates/log4jxml");
+  my $template = Text::Template->new( TYPE => 'STRING', SOURCE => $py );
+  open( my $fh, '>', $file );
+  $fh->print( $template->fill_in( HASH => {} ) );
+  close($fh);
+
+}
+
+sub getPackageList {
+  my ($key) = @_;
+
+  my @dlist;
+  my $width = 0;
+  foreach my $pkg ( @{ $opts{'package'} } ) {
+    my ( $g, $a, $v ) = split( ':', $pkg );
+
+    push(
+      @dlist, qq{<dependency>
+       <groupId>$g</groupId>
+       <artifactId>$a</artifactId>
+       <version>$v</version>
+     </dependency>}
+    );
+  }
+
+  return join( "\n", @dlist );
+}
+
+__END__ 
+
+=head1 NAME
+
+/home/apressel/bin/cstart - [description here]
+
+=head1 VERSION
+
+This documentation refers to /home/apressel/bin/cstart version 0.0.1
+
+=head1 USAGE
+
+    /home/apressel/bin/cstart [options]
+
+=head1 REQUIRED ARGUMENTS
+
+=over
+
+None
+
+=back
+
+=head1 OPTIONS
+
+=over
+
+None
+
+=back
+
+=head1 DIAGNOSTICS
+
+None.
+
+=head1 CONFIGURATION AND ENVIRONMENT
+
+Requires no configuration files or environment variables.
+
+
+=head1 DEPENDENCIES
+
+None.
+
+
+=head1 BUGS
+
+None reported.
+Bug reports and other feedback are most welcome.
+
+
+=head1 AUTHOR
+
+Andrew Pressel C<< apressel@nextgenfed.com >>
+
+
+=head1 COPYRIGHT
+
+Copyright (c) 2017, Andrew Pressel C<< <apressel@nextgenfed.com> >>. All rights reserved.
+
+This module is free software. It may be used, redistributed
+and/or modified under the terms of the Perl Artistic License
+(see http://www.perl.com/perl/misc/Artistic.html)
+
+
+=head1 DISCLAIMER OF WARRANTY
+
+BECAUSE THIS SOFTWARE IS LICENSED FREE OF CHARGE, THERE IS NO WARRANTY
+FOR THE SOFTWARE, TO THE EXTENT PERMITTED BY APPLICABLE LAW. EXCEPT WHEN
+OTHERWISE STATED IN WRITING THE COPYRIGHT HOLDERS AND/OR OTHER PARTIES
+PROVIDE THE SOFTWARE "AS IS" WITHOUT WARRANTY OF ANY KIND, EITHER
+EXPRESSED OR IMPLIED, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE. THE
+ENTIRE RISK AS TO THE QUALITY AND PERFORMANCE OF THE SOFTWARE IS WITH
+YOU. SHOULD THE SOFTWARE PROVE DEFECTIVE, YOU ASSUME THE COST OF ALL
+NECESSARY SERVICING, REPAIR, OR CORRECTION.
+
+IN NO EVENT UNLESS REQUIRED BY APPLICABLE LAW OR AGREED TO IN WRITING
+WILL ANY COPYRIGHT HOLDER, OR ANY OTHER PARTY WHO MAY MODIFY AND/OR
+REDISTRIBUTE THE SOFTWARE AS PERMITTED BY THE ABOVE LICENCE, BE
+LIABLE TO YOU FOR DAMAGES, INCLUDING ANY GENERAL, SPECIAL, INCIDENTAL,
+OR CONSEQUENTIAL DAMAGES ARISING OUT OF THE USE OR INABILITY TO USE
+THE SOFTWARE (INCLUDING BUT NOT LIMITED TO LOSS OF DATA OR DATA BEING
+RENDERED INACCURATE OR LOSSES SUSTAINED BY YOU OR THIRD PARTIES OR A
+FAILURE OF THE SOFTWARE TO OPERATE WITH ANY OTHER SOFTWARE), EVEN IF
+SUCH HOLDER OR OTHER PARTY HAS BEEN ADVISED OF THE POSSIBILITY OF
+SUCH DAMAGES.
+

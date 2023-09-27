@@ -13,22 +13,43 @@ use Term::ReadKey;
 use StructurePrinter;
 
 our @EXPORT_OK
-    = qw( dump_table build_table quick startlog query message message_err message_alert walker compareArray compareHash wrapper variables mean stddev printStats convertSeconds red green yellow blue magenta white reload_module backspace );
+    = qw( permute dump_table build_table quick startlog query message message_err message_alert walker compareArray compareHash wrapper variables mean stddev printStats convertSeconds red green yellow blue magenta white reload_module backspace faint );
 
 our %EXPORT_TAGS = (
   COMPARE => [qw( compareHash compareArray )],
   LOG     => [qw( startlog )],
   MISC    => [qw( quick message message_err message_alert walker wrapper reload_module backspace)],
   SQL     => [qw( query variables )],
-  STATS   => [qw( mean stddev )],
+  STATS   => [qw( permute mean stddev )],
   TIME    => [qw( convertSeconds )],
-  COLOR   => [qw( red green yellow blue magenta white )],
+  COLOR   => [qw( red green yellow blue magenta white faint )],
   ALL     => [@EXPORT_OK],
 );
 
-our $VERSION = '0.24.0';
+our $VERSION = '0.25.0';
 
 our %MTIME;
+
+sub permute{
+  my ($ref, $sz) = @_;
+
+  $sz = scalar(@{$ref}) unless( defined($sz) );
+  if( $sz == 1 ){
+    quick(@{$ref});
+    return;
+  }
+
+  foreach my $i (0 .. ($sz-1)){
+    permute($ref, $sz-1);
+
+    if( $sz % 2 == 1 ){
+      @{$ref}[0,$sz-1] = @{$ref}[$sz-1,0];
+    }else{
+      @{$ref}[$i,$sz-1] = @{$ref}[$sz-1,$i];
+    }
+  }
+}
+
 
 sub clean {
   my ($str) = @_;
@@ -232,6 +253,13 @@ sub white {
   my ( $str, $format ) = @_;
   return WHITE . BOLD . $str . RESET;
 }
+
+sub faint {
+  my ( $str, $format ) = @_;
+  return FAINT . $str . RESET;
+}
+
+
 
 sub convertSeconds {
   my ($seconds) = @_;

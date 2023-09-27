@@ -108,6 +108,7 @@ public final class Utilities {
    * @param <T> - any object
    * @param list -- list of thingies to print
    */
+  @SafeVarargs
   public static <T> void quick(final T... list) {
     StringBuilder sb = new StringBuilder();
     for (T list1 : list) {
@@ -122,6 +123,7 @@ public final class Utilities {
    * @param <T> - any object
    * @param list - list of thingies to display
    */
+  @SafeVarargs
   public static <T> void message(final T... list) {
     String format = "E MMM dd HH:mm:ss yyyy";
     DateTimeFormatter dtf = DateTimeFormatter.ofPattern(format);
@@ -135,6 +137,7 @@ public final class Utilities {
     System.out.print(sb.toString());
   }
 
+  @SafeVarargs
   public static <T> void trace(final T... list) {
 
 	final StackTraceElement[] trace = Thread.currentThread().getStackTrace();

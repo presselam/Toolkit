@@ -4,16 +4,24 @@ use 5.020;
 use warnings;
 use autodie;
 
+use File::Basename;
+use File::Slurp;
 use Getopt::Long;
-use Text::CSV;
+use Text::Template;
 
 use Toolkit;
 
-######## DEV-ONLY ########
-#push(@ARGV, '--infile=gm.txt', '--limit=10');
-
-my %opts = ( 'delim' => "\t", hdr => 1 );
-if ( !GetOptions( \%opts, 'delim=s', 'infile=s', 'csv', 'hdr!', 'limit=i' ) ) {
+my %opts = (
+  spooldir => '.',
+  version  => '3.10',
+);
+if (
+  !GetOptions(
+    \%opts,       'id=s',       'version=s', 'devpackage=s@',
+    'package=s@', 'spooldir=s', 'force'
+  )
+    )
+{
   die("Invalid incantation\n");
 }
 
@@ -21,57 +29,80 @@ main();
 exit(0);
 
 sub main {
-  foreach my $req (qw( infile )) {
-    die("must specify a [$req]") unless ( exists( $opts{$req} ) );
+
+  foreach my $req (qw( id spooldir version )) {
+    die("must specify a valid $req") unless ( exists( $opts{$req} ) );
   }
 
-  my $csv = Text::CSV->new(
-    { binary   => 1,
-      sep_char => ( exists( $opts{'csv'} ) ? ',' : $opts{'delim'} ),
-    }
+  my $exe = $opts{'exe'} || $opts{'id'};
+
+  message('Making Directories');
+  my $dir = "$opts{'spooldir'}/$opts{'id'}";
+  mkdir($dir) unless ( -d $dir );
+  mkdir("$dir/src") unless ( -d "$dir/src" );
+
+  message('Creating Pipfile');
+  my $pip      = read_file("$ENV{'HOME'}/.templates/pipfile");
+  my $template = Text::Template->new( TYPE => 'STRING', SOURCE => $pip );
+
+  my $packages = getPackageList('package');
+  my $devonly  = getPackageList('devpackage');
+
+  open( my $fh, '>', "$dir/Pipfile" );
+  $fh->print(
+    $template->fill_in(
+      HASH => {
+        packages => $packages,
+        devonly  => $devonly,
+        version  => $opts{'version'},
+      }
+    )
   );
-
-  message("Scanning $opts{'infile'}");
-
-  open( my $fh, '<', $opts{'infile'} );
-
-  my @hdr;
-  my $wd = 3;
-  if ( $opts{'hdr'} ) {
-    @hdr = @{ $csv->getline($fh) };
-    $wd = length(scalar(@hdr));
-  }
-
-  my $count = 1;
-  while ( my $row = $csv->getline($fh) ) {
-    if( scalar(@hdr) == 0 ){
-      @hdr = map{ '' } @{$row};
-    }
-    my $record = {};
-    foreach my $i (0 .. $#hdr){
-      my $key = sprintf("%0$wd"."d-%s", $i, $hdr[$i]);
-      $record->{$key} = $row->[$i];
-    }
-
-    printObject($record);
-    last if( exists($opts{'limit'}) && (++$count > $opts{'limit'}) );
-  }
   close($fh);
+
+  message('Creating Sources');
+  my $file = "$dir/src/main.py";
+  if ( -f $file ) {
+    warn( basename($file) . ' already exists' );
+  } else {
+    my $py       = read_file("$ENV{'HOME'}/.templates/pyscript");
+    my $template = Text::Template->new( TYPE => 'STRING', SOURCE => $py );
+    open( my $fh, '>', $file );
+    $fh->print( $template->fill_in( HASH => { name => $opts{'id'} } ) );
+    close($fh);
+  }
+}
+
+sub getPackageList {
+  my ($key) = @_;
+
+  my %plist;
+  my $width = 0;
+  foreach my $pkg ( @{ $opts{$key} } ) {
+    my ( $name, $ver ) = $pkg =~ /^(.+?)([<!=>~].+){0,1}$/;
+    $ver          = '*' unless ($ver);
+    $plist{$name} = $ver;
+    $width        = length($name) if ( length($name) > $width );
+  }
+
+  return join( "\n",
+    map { sprintf( '%-' . $width . 's = "%s"', $_, $plist{$_} ) }
+    sort keys %plist );
 }
 
 __END__ 
 
 =head1 NAME
 
-unique.pl - [description here]
+/home/apressel/bin/cstart - [description here]
 
 =head1 VERSION
 
-This documentation refers to unique.pl version 0.0.1
+This documentation refers to /home/apressel/bin/cstart version 0.0.1
 
 =head1 USAGE
 
-    unique.pl [options]
+    /home/apressel/bin/cstart [options]
 
 =head1 REQUIRED ARGUMENTS
 

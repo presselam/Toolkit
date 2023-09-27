@@ -1,0 +1,19 @@
+%cmake_packages = (
+  gdal => qq{
+find_package(GDAL REQUIRED)
+include_directories(\${GDAL_INCLUDE_DIR})
+target_link_libraries(\${TARGET} \${GDAL_LIBRARY})
+  },
+  octomap => qq{
+find_package(octomap REQUIRED)
+include_directories(\${OCTOMAP_INCLUDE_DIRS})
+target_link_libraries(\${TARGET} \${OCTOMAP_LIBRARIES})
+  },
+  mixr => qq{
+find_path(MIXR_INCLUDE_DIR NAMES mixr/base/util/nave_utils.hpp)
+find_path(MIXR_LIBRARY_DIR NAMES mixr_base.lib)
+
+target_include_directories(\${TARGET} PUBLIC \${MIXR_INCLUDE_DIR})
+target_link_libraries(\${TARGET} \${MIXR_LIBRARY_DIR}/mixr_base.lib)
+  },
+);

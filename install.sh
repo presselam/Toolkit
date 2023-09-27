@@ -1,7 +1,17 @@
-for dir in Profiler PSInfo Progress StructurePrinter Utilities Toolkit tools;
-do 
-	pushd ${dir}
-	perl Makefile.PL PREFIX="$HOME" LIB="${HOME}/lib" INST_SCRIPT="$HOME/bin"
-	make install
-	popd
-done
+#!/usr/bin/env bash
+#
+# Title: dev.sh
+# Descr: 
+# Date : 2023-0-25
+# Ver  : 1.0
+
+source "$HOME/bin/common.sh"
+
+BINDIR=$(readlink -f "$(dirname "$0")")
+
+message_alert 'Build Builder'
+perl Build.PL --install_base="$HOME" --install_path tmpl="$HOME/.templates" --install_path jars="$HOME/lib/java" > build.log
+
+message_alert 'Installing'
+Build install 
+

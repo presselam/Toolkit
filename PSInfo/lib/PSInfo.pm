@@ -26,6 +26,8 @@ sub stepper {
 }
 
 sub endpgm {
+  # only print if interactive mode
+  return unless( -t STDIN && -t STDOUT );
   my $endtime = time;
 
   my @lines = (
