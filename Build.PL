@@ -2,8 +2,6 @@ use Cwd qw( cwd abs_path );
 use File::Basename;
 use Module::Build;
 
-use Toolkit;
-
 my $major   = 1;
 my $minor   = 0;
 my $patch   = 0;
@@ -69,8 +67,6 @@ sub buildJava{
 
 sub buildCmake {
   my @retval;
-
-  message('Building C/C++ Utilities');
 
   my $cwd = abs_path(cwd());
   foreach my $util (qw{ prompt }){
