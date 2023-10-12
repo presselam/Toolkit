@@ -1,0 +1,179 @@
+#!/usr/bin/env perl
+
+use 5.020;
+use warnings;
+use autodie;
+
+use File::Basename;
+use File::Slurp;
+use Getopt::Long;
+use Text::Template;
+
+use Toolkit;
+
+my %opts = (
+  spooldir => '.',
+  version  => '3.10',
+);
+if (
+  !GetOptions(
+    \%opts,       'id=s',       'version=s', 'devpackage=s@',
+    'package=s@', 'spooldir=s', 'force'
+  )
+    )
+{
+  die("Invalid incantation\n");
+}
+
+main();
+exit(0);
+
+sub main {
+
+  foreach my $req (qw( id spooldir version )) {
+    die("must specify a valid $req") unless ( exists( $opts{$req} ) );
+  }
+
+  my $exe = $opts{'exe'} || $opts{'id'};
+
+  message('Making Directories');
+  my $dir = "$opts{'spooldir'}/$opts{'id'}";
+  mkdir($dir) unless ( -d $dir );
+  mkdir("$dir/src") unless ( -d "$dir/src" );
+
+  message('Creating Pipfile');
+  my $pip      = read_file("$ENV{'HOME'}/.templates/pipfile");
+  my $template = Text::Template->new( TYPE => 'STRING', SOURCE => $pip );
+
+  my $packages = getPackageList('package');
+  my $devonly  = getPackageList('devpackage');
+
+  open( my $fh, '>', "$dir/Pipfile" );
+  $fh->print(
+    $template->fill_in(
+      HASH => {
+        packages => $packages,
+        devonly  => $devonly,
+        version  => $opts{'version'},
+      }
+    )
+  );
+  close($fh);
+
+  message('Creating Sources');
+  my $file = "$dir/src/main.py";
+  if ( -f $file ) {
+    warn( basename($file) . ' already exists' );
+  } else {
+    my $py       = read_file("$ENV{'HOME'}/.templates/pyscript");
+    my $template = Text::Template->new( TYPE => 'STRING', SOURCE => $py );
+    open( my $fh, '>', $file );
+    $fh->print( $template->fill_in( HASH => { name => $opts{'id'} } ) );
+    close($fh);
+  }
+}
+
+sub getPackageList {
+  my ($key) = @_;
+
+  my %plist;
+  my $width = 0;
+  foreach my $pkg ( @{ $opts{$key} } ) {
+    my ( $name, $ver ) = $pkg =~ /^(.+?)([<!=>~].+){0,1}$/;
+    $ver          = '*' unless ($ver);
+    $plist{$name} = $ver;
+    $width        = length($name) if ( length($name) > $width );
+  }
+
+  return join( "\n",
+    map { sprintf( '%-' . $width . 's = "%s"', $_, $plist{$_} ) }
+    sort keys %plist );
+}
+
+__END__ 
+
+=head1 NAME
+
+/home/apressel/bin/cstart - [description here]
+
+=head1 VERSION
+
+This documentation refers to /home/apressel/bin/cstart version 0.0.1
+
+=head1 USAGE
+
+    /home/apressel/bin/cstart [options]
+
+=head1 REQUIRED ARGUMENTS
+
+=over
+
+None
+
+=back
+
+=head1 OPTIONS
+
+=over
+
+None
+
+=back
+
+=head1 DIAGNOSTICS
+
+None.
+
+=head1 CONFIGURATION AND ENVIRONMENT
+
+Requires no configuration files or environment variables.
+
+
+=head1 DEPENDENCIES
+
+None.
+
+
+=head1 BUGS
+
+None reported.
+Bug reports and other feedback are most welcome.
+
+
+=head1 AUTHOR
+
+Andrew Pressel C<< apressel@nextgenfed.com >>
+
+
+=head1 COPYRIGHT
+
+Copyright (c) 2017, Andrew Pressel C<< <apressel@nextgenfed.com> >>. All rights reserved.
+
+This module is free software. It may be used, redistributed
+and/or modified under the terms of the Perl Artistic License
+(see http://www.perl.com/perl/misc/Artistic.html)
+
+
+=head1 DISCLAIMER OF WARRANTY
+
+BECAUSE THIS SOFTWARE IS LICENSED FREE OF CHARGE, THERE IS NO WARRANTY
+FOR THE SOFTWARE, TO THE EXTENT PERMITTED BY APPLICABLE LAW. EXCEPT WHEN
+OTHERWISE STATED IN WRITING THE COPYRIGHT HOLDERS AND/OR OTHER PARTIES
+PROVIDE THE SOFTWARE "AS IS" WITHOUT WARRANTY OF ANY KIND, EITHER
+EXPRESSED OR IMPLIED, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE. THE
+ENTIRE RISK AS TO THE QUALITY AND PERFORMANCE OF THE SOFTWARE IS WITH
+YOU. SHOULD THE SOFTWARE PROVE DEFECTIVE, YOU ASSUME THE COST OF ALL
+NECESSARY SERVICING, REPAIR, OR CORRECTION.
+
+IN NO EVENT UNLESS REQUIRED BY APPLICABLE LAW OR AGREED TO IN WRITING
+WILL ANY COPYRIGHT HOLDER, OR ANY OTHER PARTY WHO MAY MODIFY AND/OR
+REDISTRIBUTE THE SOFTWARE AS PERMITTED BY THE ABOVE LICENCE, BE
+LIABLE TO YOU FOR DAMAGES, INCLUDING ANY GENERAL, SPECIAL, INCIDENTAL,
+OR CONSEQUENTIAL DAMAGES ARISING OUT OF THE USE OR INABILITY TO USE
+THE SOFTWARE (INCLUDING BUT NOT LIMITED TO LOSS OF DATA OR DATA BEING
+RENDERED INACCURATE OR LOSSES SUSTAINED BY YOU OR THIRD PARTIES OR A
+FAILURE OF THE SOFTWARE TO OPERATE WITH ANY OTHER SOFTWARE), EVEN IF
+SUCH HOLDER OR OTHER PARTY HAS BEEN ADVISED OF THE POSSIBILITY OF
+SUCH DAMAGES.
+
