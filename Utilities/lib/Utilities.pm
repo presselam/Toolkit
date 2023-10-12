@@ -13,7 +13,7 @@ use Term::ReadKey;
 use StructurePrinter;
 
 our @EXPORT_OK
-    = qw( permute dump_table build_table quick startlog query message message_err message_alert walker compareArray compareHash wrapper variables mean stddev printStats convertSeconds red green yellow blue magenta white reload_module backspace faint );
+    = qw( makeSpinner permute dump_table build_table quick startlog query message message_err message_alert walker compareArray compareHash wrapper variables mean stddev printStats convertSeconds red green yellow blue magenta white reload_module backspace faint );
 
 our %EXPORT_TAGS = (
   COMPARE => [qw( compareHash compareArray )],
@@ -23,12 +23,29 @@ our %EXPORT_TAGS = (
   STATS   => [qw( permute mean stddev )],
   TIME    => [qw( convertSeconds )],
   COLOR   => [qw( red green yellow blue magenta white faint )],
+  SPINNERS => [qw( makeSpinner )],
   ALL     => [@EXPORT_OK],
 );
 
-our $VERSION = '0.25.0';
+our $VERSION = '0.26.0';
 
 our %MTIME;
+
+sub makeSpinner{
+  my ($base, $steps) = @_;
+  $base = '0x1F550' unless($base);
+  $steps = 12 unless($steps);
+
+  $base = hex($base);
+  my $state = 0;
+
+  binmode(STDOUT, ':utf8');
+  return sub{
+    local $|=1;
+    print(chr($base+$state), "\r");
+    $state = ($state + 1) % $steps;
+  }
+}
 
 sub permute{
   my ($ref, $sz) = @_;
@@ -59,7 +76,9 @@ sub clean {
 
 sub dump_table {
   my @retval = build_table(@_);
-  say( join( "\n", @retval ) );
+  my %args = @_;
+  my $rows = scalar(@{$args{'table'}}) - 1;
+  say( join( "\n", @retval, "$rows Rows Affected")  );
 }
 
 sub build_table {

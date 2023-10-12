@@ -27,21 +27,29 @@ my $build = Module::Build->new(
   script_files => [@scripts],
   pm_files => {
     'StructurePrinter/lib/StructurePrinter.pm' => 'lib/StructurePrinter.pm',
-    'jre-perl/lib/Java.pm' => 'lib/Java.pm',
-    'Progress/lib/Progress.pm' => 'lib/Progress.pm',
-    'PSInfo/lib/PSInfo.pm' => 'lib/PSInfo.pm',
-    'Utilities/lib/Utilities.pm' => 'lib/Utilities.pm',
-    'Profiler/lib/Profiler.pm' => 'lib/Profiler.pm',
-    'Toolkit/lib/Toolkit.pm' => 'lib/Toolkit.pm',
+    'jre-perl/lib/Java.pm'                     => 'lib/Java.pm',
+    'Progress/lib/Progress.pm'                 => 'lib/Progress.pm',
+    'PSInfo/lib/PSInfo.pm'                     => 'lib/PSInfo.pm',
+    'Utilities/lib/Utilities.pm'               => 'lib/Utilities.pm',
+    'Profiler/lib/Profiler.pm'                 => 'lib/Profiler.pm',
+    'Toolkit/lib/Toolkit.pm'                   => 'lib/Toolkit.pm',
   },
+  py_files => {
+    'python/lib/structureprinter.py' => 'py/structureprinter.py',
+    'python/lib/toolkit.py'          => 'py/toolkit.py',
+    'python/lib/utilities.py'        => 'py/utilities.py',
+  }
 );
 
-$build->add_build_element('jars');
-$build->add_build_element('tmpl');
-
 my $install = $build->prefix() || $build->install_base() || $ENV{'HOME'};
-$build->install_path('tmpl' => "$install/.templates");
+$build->add_build_element('jars');
 $build->install_path('jars' => "$install/lib/java");
+
+$build->add_build_element('tmpl');
+$build->install_path('tmpl' => "$install/.templates");
+
+$build->add_build_element('py');
+$build->install_path('py' => "$install/lib/python");
 
 $build->create_build_script();
 
@@ -61,6 +69,8 @@ sub buildJava{
 
 sub buildCmake {
   my @retval;
+
+  message('Building C/C++ Utilities');
 
   my $cwd = abs_path(cwd());
   foreach my $util (qw{ prompt }){
