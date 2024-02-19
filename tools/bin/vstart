@@ -4,54 +4,104 @@ use 5.020;
 use warnings;
 use autodie;
 
+use File::Basename;
+use File::Slurp;
 use Getopt::Long;
+use Text::Template;
 
 use Toolkit;
 
-my %opts;
-if( !GetOptions(\%opts, 'ticket=s', 'alias=s', 'module=s') ){
+my %opts = (
+  spooldir => '.',
+  version  => '3.10',
+);
+if (
+  !GetOptions(
+    \%opts,       'id=s',       'version=s', 'devpackage=s@',
+    'package=s@', 'spooldir=s', 'force'
+  )
+    )
+{
   die("Invalid incantation\n");
 }
 
 main();
 exit(0);
 
-sub main{
+sub main {
 
-  foreach my $req (qw{ ticket }){
-    die("must specify a valid $req") unless( exists($opts{$req}) );
+  foreach my $req (qw( id spooldir version )) {
+    die("must specify a valid $req") unless ( exists( $opts{$req} ) );
   }
 
-  my $dir = "$ENV{'HOME'}/projects/$opts{'ticket'}";
-  mkdir($dir) unless( -d $dir );
+  message('Making Directories');
+  my $dir = "$opts{'spooldir'}/$opts{'id'}";
+  mkdir($dir) unless ( -d $dir );
+  mkdir("$dir/doc") unless ( -d "$dir/doc" );
+  mkdir("$dir/plugin") unless ( -d "$dir/plugin" );
 
-  if( exists($opts{'module'}) ){
-    $dir .= "/$opts{'module'}";
-    mkdir($dir) unless( -d $dir );
+  message('Creating Sources');
+  my $file = "$dir/doc/$opts{'id'}.doc";
+  if ( -f $file ) {
+    warn( basename($file) . ' already exists' );
+  } else {
+    open(my $fh, '>', $file);
+    $fh->say("# TODO");
+    close($fh);
   }
 
-  if( exists($opts{'alias'}) ){
-    my $aka = "$ENV{'HOME'}/projects/$opts{'alias'}";
-    system("ln -s $dir $aka") unless( -e $aka );
-
+  $file = "$dir/plugin/$opts{'id'}.vim";
+  if ( -f $file ) {
+    warn( basename($file) . ' already exists' );
+  } else {
+    my $vim       = read_file("$ENV{'HOME'}/.templates/vimscript.tmpl");
+    my $template = Text::Template->new( TYPE => 'STRING', SOURCE => $vim );
+    open( my $fh, '>', $file );
+    $fh->print( $template->fill_in( HASH => { name => $opts{'id'} } ) );
+    close($fh);
   }
 
+  $file = "$dir/README.md";
+  if ( -f $file ) {
+    warn( basename($file) . ' already exists' );
+  } else {
+    open(my $fh, '>', $file);
+    $fh->say("# Name:\n\n$opts{'id'}\n\n# Description:\n\n[description of module's purpose here]");
 
+    close($fh);
+  }
+}
+
+sub getPackageList {
+  my ($key) = @_;
+
+  my %plist;
+  my $width = 0;
+  foreach my $pkg ( @{ $opts{$key} } ) {
+    my ( $name, $ver ) = $pkg =~ /^(.+?)([<!=>~].+){0,1}$/;
+    $ver          = '*' unless ($ver);
+    $plist{$name} = $ver;
+    $width        = length($name) if ( length($name) > $width );
+  }
+
+  return join( "\n",
+    map { sprintf( '%-' . $width . 's = "%s"', $_, $plist{$_} ) }
+    sort keys %plist );
 }
 
 __END__ 
 
 =head1 NAME
 
-nmr - [description here]
+/home/apressel/bin/cstart - [description here]
 
 =head1 VERSION
 
-This documentation refers to nmr version 0.0.1
+This documentation refers to /home/apressel/bin/cstart version 0.0.1
 
 =head1 USAGE
 
-    nmr [options]
+    /home/apressel/bin/cstart [options]
 
 =head1 REQUIRED ARGUMENTS
 

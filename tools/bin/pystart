@@ -42,7 +42,7 @@ sub main {
   mkdir("$dir/src") unless ( -d "$dir/src" );
 
   message('Creating Pipfile');
-  my $pip      = read_file("$ENV{'HOME'}/.templates/pipfile");
+  my $pip      = read_file("$ENV{'HOME'}/.templates/pipfile.tmpl");
   my $template = Text::Template->new( TYPE => 'STRING', SOURCE => $pip );
 
   my $packages = getPackageList('package');
@@ -65,7 +65,7 @@ sub main {
   if ( -f $file ) {
     warn( basename($file) . ' already exists' );
   } else {
-    my $py       = read_file("$ENV{'HOME'}/.templates/pyscript");
+    my $py       = read_file("$ENV{'HOME'}/.templates/pyscript.tmpl");
     my $template = Text::Template->new( TYPE => 'STRING', SOURCE => $py );
     open( my $fh, '>', $file );
     $fh->print( $template->fill_in( HASH => { name => $opts{'id'} } ) );

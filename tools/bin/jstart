@@ -44,7 +44,7 @@ sub main {
   mkdir("$dir/src") unless ( -d "$dir/src" );
 
   message('Creating pom');
-  my $pom      = read_file("$ENV{'HOME'}/.templates/pomxml");
+  my $pom      = read_file("$ENV{'HOME'}/.templates/pomxml.tmpl");
   my $template = Text::Template->new( TYPE => 'STRING', SOURCE => $pom );
 
   my $packages   = getPackageList();
@@ -116,7 +116,7 @@ sub main {
   if ( -f $file ) {
     warn( basename($file) . ' already exists' );
   } else {
-    my $py       = read_file("$ENV{'HOME'}/.templates/javaclass");
+    my $py       = read_file("$ENV{'HOME'}/.templates/javaclass.tmpl");
     my $template = Text::Template->new( TYPE => 'STRING', SOURCE => $py );
     open( my $fh, '>', $file );
     $fh->print(
@@ -133,7 +133,7 @@ sub main {
   message('Creating Resources');
   $path = "$dir/src/main/resources";
 
-  my $tree = '';
+  $tree = '';
   foreach my $node ( split( /\//, $path ) ) {
     $tree .= "/$node";
     next if ( -d $tree );
@@ -141,9 +141,9 @@ sub main {
   }
 
   $file = "$tree/log4j2.xml";
-  my $py       = read_file("$ENV{'HOME'}/.templates/log4jxml");
-  my $template = Text::Template->new( TYPE => 'STRING', SOURCE => $py );
-  open( my $fh, '>', $file );
+  my $py       = read_file("$ENV{'HOME'}/.templates/log4jxml.tmpl");
+  $template = Text::Template->new( TYPE => 'STRING', SOURCE => $py );
+  open( $fh, '>', $file );
   $fh->print( $template->fill_in( HASH => {} ) );
   close($fh);
 

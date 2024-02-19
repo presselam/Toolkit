@@ -1,4 +1,4 @@
-#!/usr/bin/env perl
+#! /usr/bin/env perl
 
 use 5.020;
 use warnings;
@@ -7,8 +7,10 @@ use autodie;
 use Getopt::Long;
 use JSON;
 
+use Toolkit;
+
 my %opts;
-if ( !GetOptions( \%opts, 'pack', 'unpack', 'infile=s' ) ) {
+if ( !GetOptions( \%opts, 'filter=s@', 'delete', 'verbose', 'commit' ) ) {
   die("Invalid incantation\n");
 }
 
@@ -17,34 +19,59 @@ exit(0);
 
 sub main {
 
-  # Geta all the text from stdin
-  local $/ = undef;
-  my $json_text = <STDIN>;
+  my $json = JSON->new->allow_nonref();
 
-  my $json      = JSON->new->allow_nonref();
-  my $perl_scalar = $json->decode($json_text);
-  if ( exists( $opts{'pack'} ) ) {
-    print( $json->encode($perl_scalar) );
-  } elsif ( exists( $opts{'unpack'} ) ) {
-    print( $json->pretty->encode($perl_scalar) );
-  } else {
-    print($json_text);
+  my @delete;
+  my $resp  = qx{ docker images --format "{{json .}}" };
+  my @table = ( [qw( image id size age )] );
+  foreach my $img ( split( /\r?\n/m, $resp ) ) {
+    my $obj = $json->decode($img);
+    printObject($obj) if ( $opts{'verbose'} );
+    my $imgName = join( ':', @{$obj}{ 'Repository', 'Tag' } );
+
+    if ( exists( $opts{'filter'} ) ) {
+      my $skip = 1;
+      foreach my $re ( @{ $opts{'filter'} } ) {
+        $skip = 0 if ( $imgName =~ /^$re/ );
+      }
+      next if ($skip);
+    }
+
+    push( @table, [ $imgName, @{$obj}{ 'ID', 'Size', 'CreatedSince' } ] );
+
+    if ( exists( $opts{'delete'} ) ) {
+        push( @delete, $obj );
+    }
   }
+
+  dump_table( table => \@table );
+
+  if ( exists( $opts{'delete'} ) ) {
+    message( "Deleting " . scalar(@delete) . " Images" );
+    foreach my $img (@delete) {
+      if ( exists( $opts{'commit'} ) ) {
+        system("docker rmi -f $img->{'ID'}");
+      } else {
+        say("Deleting: $img->{'Repository'}:$img->{'Tag'}");
+      }
+    }
+  }
+
 }
 
 __END__ 
 
 =head1 NAME
 
-quick.pl - [description here]
+bin/docker.pl - [description here]
 
 =head1 VERSION
 
-This documentation refers to quick.pl version 0.0.1
+This documentation refers to bin/docker.pl version 0.0.1
 
 =head1 USAGE
 
-    quick.pl [options]
+    bin/docker.pl [options]
 
 =head1 REQUIRED ARGUMENTS
 
@@ -89,7 +116,7 @@ Andrew Pressel C<< apressel@nextgenfed.com >>
 
 =head1 COPYRIGHT
 
-Copyright (c) 2018, Andrew Pressel C<< <apressel@nextgenfed.com> >>. All rights reserved.
+Copyright (c) 2021, Andrew Pressel C<< <apressel@nextgenfed.com> >>. All rights reserved.
 
 This module is free software. It may be used, redistributed
 and/or modified under the terms of the Perl Artistic License

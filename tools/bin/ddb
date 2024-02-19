@@ -1,14 +1,19 @@
-#!/usr/bin/env perl
+#! /usr/bin/env perl
 
 use 5.020;
 use warnings;
 use autodie;
 
 use Getopt::Long;
+use DateTime;
+use DateTime::Format::ISO8601;
 use JSON;
+use Term::ANSIColor qw( :constants );
 
-my %opts;
-if ( !GetOptions( \%opts, 'pack', 'unpack', 'infile=s' ) ) {
+use Toolkit;
+
+my %opts = ();
+if ( !GetOptions( \%opts, 'table=s@', 'verbose', 'commit', 'list' ) ) {
   die("Invalid incantation\n");
 }
 
@@ -17,34 +22,59 @@ exit(0);
 
 sub main {
 
-  # Geta all the text from stdin
-  local $/ = undef;
-  my $json_text = <STDIN>;
-
-  my $json      = JSON->new->allow_nonref();
-  my $perl_scalar = $json->decode($json_text);
-  if ( exists( $opts{'pack'} ) ) {
-    print( $json->encode($perl_scalar) );
-  } elsif ( exists( $opts{'unpack'} ) ) {
-    print( $json->pretty->encode($perl_scalar) );
-  } else {
-    print($json_text);
+  foreach my $req (qw{ table }) {
+    die "must specify a valid $req" unless ( exists( $opts{$req} ) );
   }
+
+  my $json = JSON->new->allow_nonref();
+  my @base = ( 'aws', 'dynamodb', 'scan', '--table-name' );
+  my @filter;
+
+  foreach my $tblName ( @{ $opts{'table'} } ) {
+    my @cmd = ( @base, $tblName );
+
+    message( "cmd", join( ' ', @cmd ) ) if ( exists( $opts{'verbose'} ) );
+
+    my $resp = qx{ @cmd };
+    my $obj  = $json->decode($resp);
+
+    printObject($obj) if ( exists( $opts{'verbose'} ) );
+
+    my $cols  = undef;
+    my @table = ();
+    foreach my $ref ( @{ $obj->{'Items'} } ) {
+      if ( !defined($cols) ) {
+        $cols = [ sort keys %{$ref} ];
+        @table = ( $cols );
+      }
+
+      my @row;
+      foreach my $col ( @{$cols} ) {
+        my $data = $ref->{$col};
+        push(@row, values %{$data});
+      }
+
+      push( @table, \@row );
+    }
+    dump_table( table => \@table );
+    say( scalar(@table) - 1, ' Rows Affected' );
+  }
+
 }
 
-__END__ 
+__END__
 
 =head1 NAME
 
-quick.pl - [description here]
+s3.purge.pl - [description here]
 
 =head1 VERSION
 
-This documentation refers to quick.pl version 0.0.1
+This documentation refers to s3.purge.pl version 0.0.1
 
 =head1 USAGE
 
-    quick.pl [options]
+    s3.purge.pl [options]
 
 =head1 REQUIRED ARGUMENTS
 
@@ -89,7 +119,7 @@ Andrew Pressel C<< apressel@nextgenfed.com >>
 
 =head1 COPYRIGHT
 
-Copyright (c) 2018, Andrew Pressel C<< <apressel@nextgenfed.com> >>. All rights reserved.
+Copyright (c) 2020, Andrew Pressel C<< <apressel@nextgenfed.com> >>. All rights reserved.
 
 This module is free software. It may be used, redistributed
 and/or modified under the terms of the Perl Artistic License

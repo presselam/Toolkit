@@ -1,14 +1,15 @@
-#!/usr/bin/env perl
+#! /usr/bin/env perl
 
 use 5.020;
 use warnings;
 use autodie;
 
 use Getopt::Long;
-use JSON;
+
+use Toolkit;
 
 my %opts;
-if ( !GetOptions( \%opts, 'pack', 'unpack', 'infile=s' ) ) {
+if ( !GetOptions( \%opts,'background', 'commit' ) ) {
   die("Invalid incantation\n");
 }
 
@@ -17,18 +18,15 @@ exit(0);
 
 sub main {
 
-  # Geta all the text from stdin
-  local $/ = undef;
-  my $json_text = <STDIN>;
+  my $mode = exists($opts{'background'}) ? '48' : '38';
 
-  my $json      = JSON->new->allow_nonref();
-  my $perl_scalar = $json->decode($json_text);
-  if ( exists( $opts{'pack'} ) ) {
-    print( $json->encode($perl_scalar) );
-  } elsif ( exists( $opts{'unpack'} ) ) {
-    print( $json->pretty->encode($perl_scalar) );
-  } else {
-    print($json_text);
+  binmode(STDOUT);
+  foreach my $i ( 0 .. 15 ) {
+    foreach my $j ( 0 .. 15 ) {
+      my $code = $i * 16 + $j;
+      printf( "\e[$mode;5;" . $code . "m%4d\e[0m", $code );
+    }
+    say('');
   }
 }
 
@@ -89,7 +87,7 @@ Andrew Pressel C<< apressel@nextgenfed.com >>
 
 =head1 COPYRIGHT
 
-Copyright (c) 2018, Andrew Pressel C<< <apressel@nextgenfed.com> >>. All rights reserved.
+Copyright (c) 2020, Andrew Pressel C<< <apressel@nextgenfed.com> >>. All rights reserved.
 
 This module is free software. It may be used, redistributed
 and/or modified under the terms of the Perl Artistic License
