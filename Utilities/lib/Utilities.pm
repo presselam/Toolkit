@@ -7,66 +7,75 @@ use File::Basename;
 use Getopt::Long;
 use IO::File;
 use POSIX qw( strftime );
-use Term::ANSIColor qw( :constants );
+use Term::ANSIColor qw( :constants color );
 use Term::ReadKey;
 
 use StructurePrinter;
 
-our @EXPORT_OK
-    = qw( makeSpinner permute dump_table build_table quick startlog query message message_err message_alert walker compareArray compareHash wrapper variables mean stddev printStats convertSeconds red green yellow blue magenta white reload_module backspace faint );
-
 our %EXPORT_TAGS = (
   COMPARE => [qw( compareHash compareArray )],
   LOG     => [qw( startlog )],
-  MISC    => [qw( quick message message_err message_alert walker wrapper reload_module backspace)],
-  SQL     => [qw( query variables )],
-  STATS   => [qw( permute mean stddev )],
-  TIME    => [qw( convertSeconds )],
-  COLOR   => [qw( red green yellow blue magenta white faint )],
+  MISC    => [
+    qw( quick message message_err message_alert walker wrapper reload_module backspace)
+  ],
+  SQL      => [qw( query variables )],
+  STATS    => [qw( makeAverager permute mean stddev )],
+  TIME     => [qw( convertSeconds )],
+  ANSI     => [qw( makeColor clrscr grey orange red green yellow blue magenta white faint )],
   SPINNERS => [qw( makeSpinner )],
-  ALL     => [@EXPORT_OK],
+  DATA     => [qw( dump_table dump_tree )],
+  ALL      => [],
 );
 
-our $VERSION = '0.26.0';
+our @EXPORT_OK;
+push( @EXPORT_OK, map { @{ $EXPORT_TAGS{$_} } } keys %EXPORT_TAGS );
+
+our $VERSION = '0.28.0';
 
 our %MTIME;
 
-sub makeSpinner{
-  my ($base, $steps) = @_;
-  $base = '0x1F550' unless($base);
-  $steps = 12 unless($steps);
+sub clrscr {
+  print "\033[2J\033[0;0H";
+}
+
+sub makeSpinner {
+  my ( $base, $steps ) = @_;
+  $base  = '0x1F550' unless ($base);
+  $steps = 12        unless ($steps);
 
   $base = hex($base);
   my $state = 0;
 
-  binmode(STDOUT, ':utf8');
-  return sub{
-    local $|=1;
-    print(chr($base+$state), "\r");
-    $state = ($state + 1) % $steps;
+  open( my $fh, ">&STDOUT" ) or die("couldn't dup STDOUT: [$!]");
+  binmode( $fh, ':utf8' );
+  $fh->autoflush();
+
+  return sub {
+    local $| = 1;
+    $fh->print( "\r", chr( $base + $state ) );
+    $state = ( $state + 1 ) % $steps;
   }
 }
 
-sub permute{
-  my ($ref, $sz) = @_;
+sub permute {
+  my ( $ref, $sz ) = @_;
 
-  $sz = scalar(@{$ref}) unless( defined($sz) );
-  if( $sz == 1 ){
-    quick(@{$ref});
+  $sz = scalar( @{$ref} ) unless ( defined($sz) );
+  if ( $sz == 1 ) {
+    quick( @{$ref} );
     return;
   }
 
-  foreach my $i (0 .. ($sz-1)){
-    permute($ref, $sz-1);
+  foreach my $i ( 0 .. ( $sz - 1 ) ) {
+    permute( $ref, $sz - 1 );
 
-    if( $sz % 2 == 1 ){
-      @{$ref}[0,$sz-1] = @{$ref}[$sz-1,0];
-    }else{
-      @{$ref}[$i,$sz-1] = @{$ref}[$sz-1,$i];
+    if ( $sz % 2 == 1 ) {
+      @{$ref}[ 0, $sz - 1 ] = @{$ref}[ $sz - 1, 0 ];
+    } else {
+      @{$ref}[ $i, $sz - 1 ] = @{$ref}[ $sz - 1, $i ];
     }
   }
 }
-
 
 sub clean {
   my ($str) = @_;
@@ -74,11 +83,47 @@ sub clean {
   return $str;
 }
 
+sub dump_tree {
+  my ( $ref, $args, $fullPath, $pre ) = @_;
+
+  $args     = {} unless ( defined($args) );
+  $pre      = '' unless ( defined($pre) );
+  $fullPath = '' unless ( defined($fullPath) );
+  my $lead = '└── ';
+
+  my $idx = 0;
+  my $sz  = scalar keys %{$ref};
+  foreach my $key ( sort keys %{$ref} ) {
+    $idx++;
+    my $isFolder = scalar( keys %{ $ref->{$key} } );
+    my $name     = $isFolder   ? green("$key") : $key;
+    my $next     = $idx == $sz ? '    '        : '│   ';
+
+    next if ( exists( $args->{'d'} ) && !$isFolder );
+    if ( exists( $args->{'match'} ) ) {
+      next if ( !$isFolder && ( $key !~ /$args->{'match'}/ ) );
+    }
+
+    if ( exists( $args->{'full'} ) ) {
+      say("${pre}${lead}${fullPath}/${name}");
+
+    } else {
+      say("${pre}${lead}${name}");
+    }
+
+    dump_tree( $ref->{$key}, $args, "$fullPath/$name", "${pre}${next}" );
+  }
+}
+
 sub dump_table {
   my @retval = build_table(@_);
-  my %args = @_;
-  my $rows = scalar(@{$args{'table'}}) - 1;
-  say( join( "\n", @retval, "$rows Rows Affected")  );
+  my %args   = @_;
+  my $rows   = scalar( @{ $args{'table'} } ) - 1;
+
+  open( my $fh, ">&STDOUT" ) or die("couldn't dup STDOUT: [$!]");
+  binmode( $fh, ':utf8' );
+  $fh->autoflush();
+  $fh->say( join( "\n", @retval, "$rows Rows Affected" ) );
 }
 
 sub build_table {
@@ -110,12 +155,39 @@ sub build_table {
 
   my @retval;
   my $hdr = '+-' . join( '-+-', map { '-' x $_ } @widths ) . '-+';
+
+  # front + links + end
+  my $cols = 4 + 3 * ( scalar(@widths) - 1 );
+  map { $cols += $_ } @widths;
+
   my ( $x, $y, $xp, $yp ) = GetTerminalSize();
 
-  if ( length($hdr) > $x ) {
+  if ( $cols > $x ) {
     @retval = _vertTable( $x, \@table, \@widths );
   } else {
-    @retval = _wideTable( $hdr, \@table, \@widths );
+    my $border = grey(
+      "\x{251C}\x{2500}"
+          . join(
+        "\x{2500}\x{253C}\x{2500}", map { "\x{2500}" x $_ } @widths
+          )
+          . "\x{2500}\x{2524}"
+    );
+    push(
+      @retval,
+      grey(
+        "\x{250C}\x{2500}"
+            . join( "\x{2500}\x{252C}\x{2500}",
+          map { "\x{2500}" x $_ } @widths )
+            . "\x{2500}\x{2510}"
+      ),
+      _wideTable( $border, \@table, \@widths ),
+      grey(
+        "\x{2514}\x{2500}"
+            . join( "\x{2500}\x{2534}\x{2500}",
+          map { "\x{2500}" x $_ } @widths )
+            . "\x{2500}\x{2518}"
+      ),
+    );
   }
 
   return wantarray ? @retval : join( "\n", @retval );
@@ -163,15 +235,17 @@ sub _wideTable {
 
   my @retval;
 
-  push( @retval, $hdr );
   my $row = shift @table;
   push(
     @retval,
-    '| '
-        . join( ' | ',
-      map { $row->[$_][1] . ' ' x ( $widths[$_] - $row->[$_][0] ) }
-          0 .. ( $#{$row} ) )
-        . ' |'
+    grey("\x{2502}") . " "
+        . join(
+      " " . grey("\x{2502}") . " ",
+      map { yellow( $row->[$_][1] ) . " " x ( $widths[$_] - $row->[$_][0] ) }
+          0 .. ( $#{$row} )
+        )
+        . " "
+        . grey("\x{2502}")
   );
   push( @retval, $hdr );
 
@@ -193,11 +267,13 @@ sub _wideTable {
           push( @buffer, ' ' x $widths[$idx] );
         }
       }
-      push( @retval, '| ' . join( ' | ', @buffer ) . ' |' );
-
+      push( @retval,
+              grey("\x{2502} ")
+            . join( grey(" \x{2502} "), @buffer )
+            . grey(" \x{2502}") );
     }
   }
-  push( @retval, $hdr );
+
   return wantarray ? @retval : join( "\n", @retval );
 }
 
@@ -241,44 +317,23 @@ sub reload_module {
   }
 }
 
-sub red {
-  my ( $str, $format ) = @_;
-  return RED . $str . RESET;
+sub makeColor {
+  my ($color) = @_;
+  $color = "ansi$color" if( $color =~ /^\d+$/ );
+  return sub {
+    return color($color) . $_[0] . RESET;
+  }
 }
 
-sub green {
-  my ( $str, $format ) = @_;
-  return GREEN . $str . RESET;
-}
-
-sub yellow {
-  my ( $str, $format ) = @_;
-
-  #  return YELLOW . BOLD . $str . RESET;
-  return "\e[38;5;226m" . $str . RESET;
-}
-
-sub blue {
-  my ( $str, $format ) = @_;
-  return BLUE . $str . RESET;
-}
-
-sub magenta {
-  my ( $str, $format ) = @_;
-  return MAGENTA . $str . RESET;
-}
-
-sub white {
-  my ( $str, $format ) = @_;
-  return WHITE . BOLD . $str . RESET;
-}
-
-sub faint {
-  my ( $str, $format ) = @_;
-  return FAINT . $str . RESET;
-}
-
-
+*grey    = makeColor('ansi238');
+*orange  = makeColor('ansi136');
+*red     = makeColor('red');
+*green   = makeColor('green');
+*yellow  = makeColor('ansi226');
+*blue    = makeColor('blue');
+*magenta = makeColor('magenta');
+*white   = makeColor('ansi255');
+*faint   = makeColor('faint');
 
 sub convertSeconds {
   my ($seconds) = @_;
@@ -290,6 +345,26 @@ sub convertSeconds {
   $seconds = $seconds % 60;      # remove the minutes
 
   return sprintf( "%02d:%02d:%02d", $hours, $minutes, $seconds );
+}
+
+sub makeAverager{
+  my $mean = 0;
+  my $count = 0;
+  my $moment = 0;
+
+  return sub{
+    my $stddev = 0;
+    foreach my $value (@_){
+      $count++;
+      my $d1 = $value - $mean;
+      $mean += $d1 / $count;
+      $moment += $d1 * ($value - $mean);
+
+      $stddev = sqrt($moment/$count);
+    }
+
+    return ($mean, $stddev);
+  };
 }
 
 sub mean {
@@ -431,12 +506,12 @@ sub message {
 
 sub message_alert {
   my $tmstmp = "====> " . scalar( localtime(time) );
-  print( "\n", join( "\n", $tmstmp, map{ green($_) } @_ ), "\n" );
+  print( "\n", join( "\n", $tmstmp, map { green($_) } @_ ), "\n" );
 }
 
 sub message_err {
   my $tmstmp = "====> " . scalar( localtime(time) );
-  print( "\n", join( "\n", $tmstmp, map{ red($_) } @_ ), "\n" );
+  print( "\n", join( "\n", $tmstmp, map { red($_) } @_ ), "\n" );
 }
 
 sub query {
