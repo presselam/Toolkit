@@ -15,12 +15,12 @@ my %INFO = (
 );
 
 my %dispatch = (
-    '.sh'  => sub { scalar slurp( "$ENV{'HOME'}/.templates/bash" ) },
-    '.pl'  => sub { scalar slurp( "$ENV{'HOME'}/.templates/perlscript" ) },
-    '.pm'  => sub { scalar slurp( "$ENV{'HOME'}/.templates/perlmodule" ) },
-    '.py' => sub { scalar slurp( "$ENV{'HOME'}/.templates/pyscript" ) },
-    'pom.xml' => sub{ scalar slurp("$ENV{'HOME'}/.templates/pomxml") },
-    'Pipfile' => sub{ scalar slurp("$ENV{'HOME'}/.templates/pipfile") },
+    '.sh'  => sub { scalar slurp( "$ENV{'HOME'}/.templates/bash.tmpl" ) },
+    '.pl'  => sub { scalar slurp( "$ENV{'HOME'}/.templates/perlscript.tmpl" ) },
+    '.pm'  => sub { scalar slurp( "$ENV{'HOME'}/.templates/perlmodule.tmpl" ) },
+    '.py' => sub { scalar slurp( "$ENV{'HOME'}/.templates/pyscript.tmpl" ) },
+    'pom.xml' => sub{ scalar slurp("$ENV{'HOME'}/.templates/pomxml.tmpl") },
+    'Pipfile' => sub{ scalar slurp("$ENV{'HOME'}/.templates/pipfile.tmpl") },
 );
 
 my $SUFFIX = q{([.][^.]+)\Z};

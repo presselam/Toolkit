@@ -18,19 +18,21 @@ our %EXPORT_TAGS = (
   MISC    => [
     qw( quick message message_err message_alert walker wrapper reload_module backspace)
   ],
-  SQL      => [qw( query variables )],
-  STATS    => [qw( makeAverager permute mean stddev )],
-  TIME     => [qw( convertSeconds )],
-  ANSI     => [qw( makeColor clrscr grey orange red green yellow blue magenta white faint )],
+  SQL   => [qw( query variables )],
+  STATS => [qw( makeAverager permute mean stddev )],
+  TIME  => [qw( convertSeconds )],
+  ANSI  => [
+    qw( makeColor clrscr grey orange red green yellow blue magenta white faint )
+  ],
   SPINNERS => [qw( makeSpinner )],
-  DATA     => [qw( dump_table dump_tree )],
+  DATA     => [qw( dump_table dump_tree dump_note )],
   ALL      => [],
 );
 
 our @EXPORT_OK;
 push( @EXPORT_OK, map { @{ $EXPORT_TAGS{$_} } } keys %EXPORT_TAGS );
 
-our $VERSION = '0.28.0';
+our $VERSION = '0.29.0';
 
 our %MTIME;
 
@@ -83,13 +85,47 @@ sub clean {
   return $str;
 }
 
+
+sub dump_note{
+  my %args = @_;
+
+  open( my $fh, ">&STDOUT" ) or die("couldn't dup STDOUT: [$!]");
+  binmode( $fh, ':utf8' );
+
+  my $title = $args{'title'};
+  my @data;
+  if( ref($args{'data'}) ){
+    @data = @{$args{'data'}};
+  }else{
+    @data = split($/, $args{'data'});
+  }
+
+  my ( $x, $y, $xp, $yp ) = GetTerminalSize();
+  my $sz = scalar(@data);
+  my $w = length($sz);
+
+  my $gutter = 2 + $w;
+  my $wide = $x-$gutter-1;
+
+  my $gcolor = makeColor(238);
+  my $tcolor = makeColor(255);
+  $fh->say($gcolor->(sprintf('%s%s%s', "\x{2500}"x$gutter, "\x{252C}", "\x{2500}"x$wide)));
+  $fh->say(sprintf(" %${w}s %s %s", '', $gcolor->("\x{2502}"), $tcolor->($title)));
+  $fh->say($gcolor->(sprintf('%s%s%s', "\x{2500}"x$gutter, "\x{253C}", "\x{2500}"x$wide)));
+  foreach my $idx (0 .. $#data){
+    $fh->print($gcolor->(sprintf(" %${w}s %s ", $idx+1, "\x{2502}")));
+    $fh->say($data[$idx]);
+  }
+  $fh->say($gcolor->(sprintf('%s%s%s', "\x{2500}"x$gutter, "\x{2534}", "\x{2500}"x$wide)));
+
+}
+
 sub dump_tree {
   my ( $ref, $args, $fullPath, $pre ) = @_;
 
   $args     = {} unless ( defined($args) );
   $pre      = '' unless ( defined($pre) );
   $fullPath = '' unless ( defined($fullPath) );
-  my $lead = '└── ';
 
   my $idx = 0;
   my $sz  = scalar keys %{$ref};
@@ -98,6 +134,7 @@ sub dump_tree {
     my $isFolder = scalar( keys %{ $ref->{$key} } );
     my $name     = $isFolder   ? green("$key") : $key;
     my $next     = $idx == $sz ? '    '        : '│   ';
+    my $lead     = $idx == $sz ? '└── '        : '├── ';
 
     next if ( exists( $args->{'d'} ) && !$isFolder );
     if ( exists( $args->{'match'} ) ) {
@@ -319,7 +356,7 @@ sub reload_module {
 
 sub makeColor {
   my ($color) = @_;
-  $color = "ansi$color" if( $color =~ /^\d+$/ );
+  $color = "ansi$color" if ( $color =~ /^\d+$/ );
   return sub {
     return color($color) . $_[0] . RESET;
   }
@@ -347,23 +384,23 @@ sub convertSeconds {
   return sprintf( "%02d:%02d:%02d", $hours, $minutes, $seconds );
 }
 
-sub makeAverager{
-  my $mean = 0;
-  my $count = 0;
+sub makeAverager {
+  my $mean   = 0;
+  my $count  = 0;
   my $moment = 0;
 
-  return sub{
+  return sub {
     my $stddev = 0;
-    foreach my $value (@_){
+    foreach my $value (@_) {
       $count++;
       my $d1 = $value - $mean;
-      $mean += $d1 / $count;
-      $moment += $d1 * ($value - $mean);
+      $mean   += $d1 / $count;
+      $moment += $d1 * ( $value - $mean );
 
-      $stddev = sqrt($moment/$count);
+      $stddev = sqrt( $moment / $count );
     }
 
-    return ($mean, $stddev);
+    return ( $mean, $stddev );
   };
 }
 
