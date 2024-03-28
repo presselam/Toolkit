@@ -4,16 +4,22 @@ use 5.020;
 use warnings;
 use autodie;
 
+use DateTime::Format::Duration;
+use Arbeiter;
 use Getopt::Long;
 use DateTime;
 use DateTime::Format::ISO8601;
 use JSON;
+use Paws;
 use Term::ANSIColor qw( :constants );
+use YAML::Tiny;
 
 use Toolkit;
 
-my %opts = ();
-if ( !GetOptions( \%opts, 'table=s@', 'verbose', 'commit', 'list' ) ) {
+my $CONF = GetConfiguration();
+my %services = GetServices();
+my %opts;
+if ( !GetOptions( \%opts, 'table=s', 'verbose' )) {
   die("Invalid incantation\n");
 }
 
@@ -21,45 +27,34 @@ main();
 exit(0);
 
 sub main {
-
-  foreach my $req (qw{ table }) {
-    die "must specify a valid $req" unless ( exists( $opts{$req} ) );
+  if ( exists($opts{'complete'}) ){
+    say( '-', join( ' -', sort keys %services ) );
+    return;
   }
 
-  my $json = JSON->new->allow_nonref();
-  my @base = ( 'aws', 'dynamodb', 'scan', '--table-name' );
-  my @filter;
+  my $db = Paws->service('DynamoDB', region => 'us-east-1');
+  
+  my $obj = $db->Scan(TableName => $opts{'table'});
 
-  foreach my $tblName ( @{ $opts{'table'} } ) {
-    my @cmd = ( @base, $tblName );
+  printObject($obj);
 
-    message( "cmd", join( ' ', @cmd ) ) if ( exists( $opts{'verbose'} ) );
+  my @header;
+  my @table;
+  foreach my $item ( @{$obj->{'Items'}} ) {
+    my $values = $item->{'Map'};
 
-    my $resp = qx{ @cmd };
-    my $obj  = $json->decode($resp);
-
-    printObject($obj) if ( exists( $opts{'verbose'} ) );
-
-    my $cols  = undef;
-    my @table = ();
-    foreach my $ref ( @{ $obj->{'Items'} } ) {
-      if ( !defined($cols) ) {
-        $cols = [ sort keys %{$ref} ];
-        @table = ( $cols );
+    my @row;
+    foreach my $key (sort keys %{$values}){
+      my %has = map{ $_ => undef } @header;
+      if( !exists($has{$key}) ){
+        push(@header, $key);
       }
-
-      my @row;
-      foreach my $col ( @{$cols} ) {
-        my $data = $ref->{$col};
-        push(@row, values %{$data});
-      }
-
-      push( @table, \@row );
     }
-    dump_table( table => \@table );
-    say( scalar(@table) - 1, ' Rows Affected' );
+      @row = map{ exists($values->{$_}{S}) ? $values->{$_}{S} : '' } @header;
+      push(@table, \@row);
   }
 
+  dump_table( table => [\@header, @table] );
 }
 
 __END__

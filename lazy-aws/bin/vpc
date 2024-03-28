@@ -1,0 +1,191 @@
+#! /usr/bin/env perl
+
+use 5.020;
+use warnings;
+use autodie;
+
+use DateTime::Format::Duration;
+use MIME::Base64;
+use Arbeiter;
+use Getopt::Long;
+use DateTime;
+use DateTime::Format::ISO8601;
+use JSON;
+use Term::ANSIColor qw( :constants );
+use YAML::Tiny;
+
+use Toolkit;
+
+my $CONF = GetConfiguration();
+my %services = GetServices();
+
+my %opts = (environment=> 'xc', running => 1, );
+if (
+  !GetOptions(
+    \%opts, ( keys %services ), 'environment=s', 'match=s', 'running!',
+    'verbose', 'commit', 'list', 'syslog', 'down','terminate',
+  )
+    )
+{
+  die("Invalid incantation\n");
+}
+
+main();
+exit(0);
+
+sub main {
+
+  my @worklist = GetWorkList(%opts);
+
+  my $ec2 = CreateAwsClient('EC2');
+  my $json = JSON->new->allow_nonref();
+  my %syslogs;
+  my @table = ( [qw(id cidr related)] );
+
+  my $vpcs = $ec2->DescribeVpcs();
+
+  foreach my $ref (@{$vpcs->{'Vpcs'}}){
+    my $id = $ref->{'VpcId'};
+    my $cidr = $ref->{'CidrBlock'};
+    foreach my $related (@{$ref->{'CidrBlockAssociationSet'}}){
+      push(@table, [
+        $id, $cidr, $related->{'CidrBlock'}
+      ]);
+      $id = $cidr = '';
+    }
+  }
+
+  message('VPC');
+  dump_table(table => \@table);
+
+
+  my $errorer = makeColor(197);
+  my $warner = makeColor(119);
+  @table = ([qw(id name cidr zone available)]);
+  my $subnets = $ec2->DescribeSubnets();
+  my @data;
+  foreach my $net (@{$subnets->{'Subnets'}}){
+    my %tags = map{ $_->{'Key'} => $_->{'Value'} } @{$net->{'Tags'}};
+
+    my @row = (
+      $net->{'SubnetId'},
+      $tags{'Name'},
+      @{$net}{'CidrBlock','AvailabilityZone','AvailableIpAddressCount'}
+    );
+
+
+    push(@data, \@row);
+  }
+
+  @data = sort{ $a->[1] cmp $b->[1] } @data;
+
+  foreach my $row (@data){
+    if( $row->[4] == 0 ){
+      @{$row} = map{ $errorer->($_) } @{$row};
+    }elsif( $row->[4] < 10 ){
+      @{$row} = map{ $warner->($_) } @{$row};
+    }
+  }
+
+  message('Subnets');
+  dump_table(table => [[qw(id name cidr zone available)], @data]);
+
+
+  @table = ([qw( id type service state )]);
+  my $vpce = $ec2->DescribeVpcEndpoints();
+  foreach my $ep (@{$vpce->VpcEndpoints()}){
+    push(@table, [@{$ep}{'VpcEndpointId','VpcEndpointType','ServiceName','State'}]);
+  }
+
+  message('Endpoints');
+  dump_table(table => \@table);
+
+}
+
+__END__
+
+=head1 NAME
+
+s3.purge.pl - [description here]
+
+=head1 VERSION
+
+This documentation refers to s3.purge.pl version 0.0.1
+
+=head1 USAGE
+
+    s3.purge.pl [options]
+
+=head1 REQUIRED ARGUMENTS
+
+=over
+
+None
+
+=back
+
+=head1 OPTIONS
+
+=over
+
+None
+
+=back
+
+=head1 DIAGNOSTICS
+
+None.
+
+=head1 CONFIGURATION AND ENVIRONMENT
+
+Requires no configuration files or environment variables.
+
+
+=head1 DEPENDENCIES
+
+None.
+
+
+=head1 BUGS
+
+None reported.
+Bug reports and other feedback are most welcome.
+
+
+=head1 AUTHOR
+
+Andrew Pressel C<< apressel@nextgenfed.com >>
+
+
+=head1 COPYRIGHT
+
+Copyright (c) 2020, Andrew Pressel C<< <apressel@nextgenfed.com> >>. All rights reserved.
+
+This module is free software. It may be used, redistributed
+and/or modified under the terms of the Perl Artistic License
+(see http://www.perl.com/perl/misc/Artistic.html)
+
+
+=head1 DISCLAIMER OF WARRANTY
+
+BECAUSE THIS SOFTWARE IS LICENSED FREE OF CHARGE, THERE IS NO WARRANTY
+FOR THE SOFTWARE, TO THE EXTENT PERMITTED BY APPLICABLE LAW. EXCEPT WHEN
+OTHERWISE STATED IN WRITING THE COPYRIGHT HOLDERS AND/OR OTHER PARTIES
+PROVIDE THE SOFTWARE "AS IS" WITHOUT WARRANTY OF ANY KIND, EITHER
+EXPRESSED OR IMPLIED, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE. THE
+ENTIRE RISK AS TO THE QUALITY AND PERFORMANCE OF THE SOFTWARE IS WITH
+YOU. SHOULD THE SOFTWARE PROVE DEFECTIVE, YOU ASSUME THE COST OF ALL
+NECESSARY SERVICING, REPAIR, OR CORRECTION.
+
+IN NO EVENT UNLESS REQUIRED BY APPLICABLE LAW OR AGREED TO IN WRITING
+WILL ANY COPYRIGHT HOLDER, OR ANY OTHER PARTY WHO MAY MODIFY AND/OR
+REDISTRIBUTE THE SOFTWARE AS PERMITTED BY THE ABOVE LICENCE, BE
+LIABLE TO YOU FOR DAMAGES, INCLUDING ANY GENERAL, SPECIAL, INCIDENTAL,
+OR CONSEQUENTIAL DAMAGES ARISING OUT OF THE USE OR INABILITY TO USE
+THE SOFTWARE (INCLUDING BUT NOT LIMITED TO LOSS OF DATA OR DATA BEING
+RENDERED INACCURATE OR LOSSES SUSTAINED BY YOU OR THIRD PARTIES OR A
+FAILURE OF THE SOFTWARE TO OPERATE WITH ANY OTHER SOFTWARE), EVEN IF
+SUCH HOLDER OR OTHER PARTY HAS BEEN ADVISED OF THE POSSIBILITY OF
+SUCH DAMAGES.
+

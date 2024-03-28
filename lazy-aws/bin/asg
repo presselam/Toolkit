@@ -1,0 +1,195 @@
+#! /usr/bin/env perl
+
+use 5.020;
+use warnings;
+use autodie;
+
+use Getopt::Long;
+use DateTime;
+use DateTime::Format::ISO8601;
+use JSON;
+use Paws;
+use Term::ANSIColor qw( :constants );
+
+use Arbeiter;
+
+use Tie::IxHash;
+use Toolkit;
+
+my %services = GetServices();
+my %opts     = ( 'environment' => 'xc', );
+if (
+  !GetOptions(
+    \%opts, ( keys %services ), 'log',           'up',
+    'down',                     'environment=s', 'verbose'
+  )
+    )
+{
+  die("Invalid incantation\n");
+}
+
+main();
+exit(0);
+
+sub main {
+
+  my @worklist = GetWorkList(%opts);
+  my $asg      = CreateAwsClient('AutoScaling');
+
+  my @groups = map {"$_->{'name_prefix'}-asg-$opts{'environment'}"} @worklist;
+
+  if ( exists( $opts{'log'} ) ) {
+    my $obj = $asg->DescribeScalingActivities(
+      'AutoScalingGroupName' => $groups[0], );
+    printObject($obj) if ( exists( $opts{'verbose'} ) );
+
+    tie( my %summary, 'Tie::IxHash' );
+    foreach my $activity ( sort { $a->{'StartTime'} cmp $b->{'StartTime'} }
+      @{ $obj->{'Activities'} } )
+    {
+      my ( $start, $end, $desc, $status )
+          = @{$activity}{ 'StartTime', 'EndTime', 'Description',
+        'StatusCode' };
+
+      my ( $date, $time ) = split( /T/, $start );
+
+      unless ( exists( $summary{$date} ) ) {
+        tie( my %times, 'Tie::IxHash' );
+        $summary{$date} = \%times;
+      }
+      unless ( exists( $summary{$date}{$time} ) ) {
+        tie( my %details, 'Tie::IxHash' );
+        $summary{$date}{$time} = \%details;
+      }
+
+      $summary{$date}{$time}{"Mesg  : $desc"}   = {};
+      $summary{$date}{$time}{"Status: $status"} = {};
+      $summary{$date}{$time}{"Finish: $end"}    = {};
+    }
+
+    say("Activity");
+    dump_tree( \%summary );
+
+  } else {
+    my $obj = $asg->DescribeAutoScalingGroups(
+      'AutoScalingGroupNames' => \@groups, );
+    printObject($obj) if ( exists( $opts{'verbose'} ) );
+
+    my @table = ( [qw(name desired min max grace launch version)] );
+    foreach my $group ( @{ $obj->{'AutoScalingGroups'} } ) {
+      my @row = @{$group}{
+        'AutoScalingGroupName', 'DesiredCapacity',
+        'MinSize',              'MaxSize',
+        'HealthCheckGracePeriod'
+      };
+
+      push( @row, $group->{'LaunchTemplate'}{'LaunchTemplateName'} );
+      push( @row, $group->{'LaunchTemplate'}{'Version'} );
+
+      push( @table, \@row );
+
+      my $gsize = undef;
+      $gsize = 0 if ( $opts{'down'} );
+      $gsize = 1 if ( $opts{'up'} );
+      if ( defined($gsize) ) {
+        $asg->UpdateAutoScalingGroup(
+          AutoScalingGroupName => $group->{'AutoScalingGroupName'},
+          MaxSize              => $gsize,
+          MinSize              => $gsize,
+          DesiredCapacity      => $gsize,
+        );
+      }
+    }
+
+    dump_table( table => \@table );
+
+  }
+}
+
+__END__
+
+=head1 NAME
+
+s3.purge.pl - [description here]
+
+=head1 VERSION
+
+This documentation refers to s3.purge.pl version 0.0.1
+
+=head1 USAGE
+
+    s3.purge.pl [options]
+
+=head1 REQUIRED ARGUMENTS
+
+=over
+
+None
+
+=back
+
+=head1 OPTIONS
+
+=over
+
+None
+
+=back
+
+=head1 DIAGNOSTICS
+
+None.
+
+=head1 CONFIGURATION AND ENVIRONMENT
+
+Requires no configuration files or environment variables.
+
+
+=head1 DEPENDENCIES
+
+None.
+
+
+=head1 BUGS
+
+None reported.
+Bug reports and other feedback are most welcome.
+
+
+=head1 AUTHOR
+
+Andrew Pressel C<< apressel@nextgenfed.com >>
+
+
+=head1 COPYRIGHT
+
+Copyright (c) 2020, Andrew Pressel C<< <apressel@nextgenfed.com> >>. All rights reserved.
+
+This module is free software. It may be used, redistributed
+and/or modified under the terms of the Perl Artistic License
+(see http://www.perl.com/perl/misc/Artistic.html)
+
+
+=head1 DISCLAIMER OF WARRANTY
+
+BECAUSE THIS SOFTWARE IS LICENSED FREE OF CHARGE, THERE IS NO WARRANTY
+FOR THE SOFTWARE, TO THE EXTENT PERMITTED BY APPLICABLE LAW. EXCEPT WHEN
+OTHERWISE STATED IN WRITING THE COPYRIGHT HOLDERS AND/OR OTHER PARTIES
+PROVIDE THE SOFTWARE "AS IS" WITHOUT WARRANTY OF ANY KIND, EITHER
+EXPRESSED OR IMPLIED, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE. THE
+ENTIRE RISK AS TO THE QUALITY AND PERFORMANCE OF THE SOFTWARE IS WITH
+YOU. SHOULD THE SOFTWARE PROVE DEFECTIVE, YOU ASSUME THE COST OF ALL
+NECESSARY SERVICING, REPAIR, OR CORRECTION.
+
+IN NO EVENT UNLESS REQUIRED BY APPLICABLE LAW OR AGREED TO IN WRITING
+WILL ANY COPYRIGHT HOLDER, OR ANY OTHER PARTY WHO MAY MODIFY AND/OR
+REDISTRIBUTE THE SOFTWARE AS PERMITTED BY THE ABOVE LICENCE, BE
+LIABLE TO YOU FOR DAMAGES, INCLUDING ANY GENERAL, SPECIAL, INCIDENTAL,
+OR CONSEQUENTIAL DAMAGES ARISING OUT OF THE USE OR INABILITY TO USE
+THE SOFTWARE (INCLUDING BUT NOT LIMITED TO LOSS OF DATA OR DATA BEING
+RENDERED INACCURATE OR LOSSES SUSTAINED BY YOU OR THIRD PARTIES OR A
+FAILURE OF THE SOFTWARE TO OPERATE WITH ANY OTHER SOFTWARE), EVEN IF
+SUCH HOLDER OR OTHER PARTY HAS BEEN ADVISED OF THE POSSIBILITY OF
+SUCH DAMAGES.
+

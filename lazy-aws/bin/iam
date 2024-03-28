@@ -4,20 +4,22 @@ use 5.020;
 use warnings;
 use autodie;
 
+use DateTime::Format::Duration;
+use MIME::Base64;
+use Arbeiter;
 use Getopt::Long;
 use DateTime;
 use DateTime::Format::ISO8601;
 use JSON;
 use Term::ANSIColor qw( :constants );
-
-use GEODS;
+use URI::Encode qw( uri_decode );
+use YAML::Tiny;
 
 use Toolkit;
 
-my %services = GEODS::GetServices();
-my %opts     = ();
-if ( !GetOptions( \%opts, ( keys %services ), 'verbose', 'commit', 'list' ) )
-{
+my $iam  = CreateAwsClient('IAM');
+my %opts = ();
+if ( !GetOptions( \%opts, 'verbose', 'role=s@' ) ) {
   die("Invalid incantation\n");
 }
 
@@ -25,72 +27,86 @@ main();
 exit(0);
 
 sub main {
+  if ( exists( $opts{'role'} ) ) {
+    describe_roles();
+  } else {
+    list_roles();
+  }
+}
 
-  my @worklist = GEODS::GetWorkList();
-  my @names = map{ "$_-xc" } grep{ $_ } map{ $_->{'name_prefix'} } @worklist;
-  if ( scalar(@names) == 0 ) {
-    warn("No services found");
-    return;
+sub describe_roles {
+  my %tree;
+
+  foreach my $role ( @{ $opts{'role'} } ) {
+    my $ref = {};
+    $tree{$role} = $ref;
+
+    my $attached = $iam->ListAttachedRolePolicies( RoleName => $role );
+    foreach my $policy ( @{ $attached->{'AttachedPolicies'} } ) {
+      my $arn  = $policy->{'PolicyArn'};
+      my $name = $policy->{'PolicyName'};
+      $ref->{$name} = {};
+
+      my $p   = $iam->GetPolicy( PolicyArn => $arn );
+      my $dvi = $p->{'Policy'}{'DefaultVersionId'};
+      my $v = $iam->GetPolicyVersion( PolicyArn => $arn, VersionId => $dvi );
+      my $doc = $v->{'PolicyVersion'}{'Document'};
+      $doc = uri_decode($doc);
+      my $obj = decode_json($doc);
+
+      foreach my $st ( @{ $obj->{'Statement'} } ) {
+        my $ptr    = $ref->{$name};
+        my $effect = $st->{'Effect'};
+        $ptr->{$effect} ||= {};
+        $ptr = $ptr->{$effect};
+
+        my $act = $st->{'Action'};
+        my @normalize = ref($act) ? @{$act} : $act;
+
+        foreach my $action (@normalize) {
+          my ( $svc, $perm ) = split( ':', $action );
+          $ptr->{$svc}{$perm} = {};
+        }
+      }
+    }
+  }
+  message('Roles');
+  dump_tree( \%tree );
+}
+
+sub list_roles {
+
+  my %tree;
+  my @roles = get_roles( @{ $opts{'role'} } );
+  foreach my $role (@roles) {
+    my $name = $role->{'RoleName'};
+    $tree{$name} = {};
   }
 
-  my $json = JSON->new->allow_nonref();
-  my @cmd  = ( 'aws', 'elbv2', 'describe-load-balancers', '--name' );
-  my @filter;
+  message('Roles');
+  dump_tree( \%tree );
+}
 
-  my @header = qw(name dns type state );
+sub get_roles {
+  my %query = map { $_ => undef } @_;
 
-  push( @cmd, @names );
-
-  message( "cmd", join( ' ', @cmd ) ) if ( exists( $opts{'verbose'} ) );
-
-  my $resp = qx{ @cmd };
-  my $obj  = $json->decode($resp);
-
-  #  printObject($obj) if ( exists( $opts{'verbose'} ) );
-
-  my $hcIndex = 0;
-  my @table;
-  foreach my $alb ( @{ $obj->{'LoadBalancers'} } ) {
-    my ( $arn, $name, $dns, $scheme )
-        = @{$alb}{ 'LoadBalancerArn', 'LoadBalancerName', 'DNSName',
-      'Scheme' };
-    my $state = $alb->{'State'}{'Code'};
-
-    my @row = ( $name, $dns, $scheme, $state, );
-
-    $resp = qx{ aws elbv2 describe-listeners --load-balancer-arn $arn };
-    my $listeners = $json->decode($resp);
-    foreach my $listener ( @{ $listeners->{'Listeners'} } ) {
-      my ( $port, $protocol, $actions )
-          = @{$listener}{ 'Port', 'Protocol', 'DefaultActions' };
-      foreach my $action ( @{$actions} ) {
-        my $tg = $action->{'TargetGroupArn'};
-        $resp = qx{ aws elbv2 describe-target-health --target-group-arn $tg };
-        my $health = $json->decode($resp);
-        foreach my $desc ( @{ $health->{'TargetHealthDescriptions'} } ) {
-          my $ec2    = $desc->{'Target'}{'Id'};
-          my $status = $desc->{'TargetHealth'}{'State'};
-
-          my $hc = "$protocol:$port => $status ($ec2)";
-          $hc = red($hc)   if ( lc($status) eq 'unhealthy' );
-          $hc = green($hc) if ( lc($status) eq 'healthy' );
-
-          push( @row, $hc );
-          if ( scalar(@row) > scalar(@header) ) {
-            push( @header, "health-$hcIndex" );
-            $hcIndex++;
-          }
-
-        }
-
+  my @retval;
+  my $marker = undef;
+  do {
+    my $roles = $iam->ListRoles( $marker ? ( Marker => $marker ) : () );
+    foreach my $role ( @{ $roles->{'Roles'} } ) {
+      my $name = $role->{'RoleName'};
+      if ( scalar keys %query ) {
+        push( @retval, $role ) if ( exists( $query{$name} ) );
+      } else {
+        push( @retval, $role );
       }
     }
 
-    push( @table, \@row );
-  }
+    $marker = $roles->{'Marker'};
+  } while ($marker);
 
-  dump_table( table => [ \@header, @table ] );
-  say( scalar(@table) - 1, ' Rows Affected' );
+  return wantarray ? @retval : \@retval;
 }
 
 __END__

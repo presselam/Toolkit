@@ -6,7 +6,7 @@ use autodie;
 
 use DateTime::Format::Duration;
 use MIME::Base64;
-use GEODS;
+use Arbeiter;
 use Getopt::Long;
 use DateTime;
 use DateTime::Format::ISO8601;
@@ -16,8 +16,8 @@ use YAML::Tiny;
 
 use Toolkit;
 
-my $CONF = GEODS::GetConfiguration();
-my %services = GEODS::GetServices();
+my $CONF = GetConfiguration();
+my %services = GetServices();
 
 my %opts = (environment=> 'xc', running => 1, );
 if (
@@ -35,9 +35,9 @@ exit(0);
 
 sub main {
 
-  my @worklist = GEODS::GetWorkList(%opts);
+  my @worklist = GetWorkList(%opts);
 
-  my $ec2 = GEODS::CreateAwsClient('EC2');
+  my $ec2 = CreateAwsClient('EC2');
   my $json = JSON->new->allow_nonref();
   my @base = ( 'aws', 'ec2', 'describe-instances' );
   my @filter;

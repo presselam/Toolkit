@@ -12,6 +12,7 @@ my @binaries = buildCmake();
 my @scripts = glob('tools/bin/*');
 push(@scripts, glob('templates/bin/*'));
 push(@scripts, glob('xml/bin/*'));
+push(@scripts, glob('lazy-aws/bin/*'));
 push(@scripts, @binaries);
 
 my $build = Module::Build->new(
@@ -31,6 +32,7 @@ my $build = Module::Build->new(
     'Utilities/lib/Utilities.pm'               => 'lib/Utilities.pm',
     'Profiler/lib/Profiler.pm'                 => 'lib/Profiler.pm',
     'Toolkit/lib/Toolkit.pm'                   => 'lib/Toolkit.pm',
+    'Arbeiter/lib/Arbeiter.pm'                 => 'lib/Arbeiter.pm',
   },
   py_files => {
     'python/lib/structureprinter.py' => 'py/structureprinter.py',
