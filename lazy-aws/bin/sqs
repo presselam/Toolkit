@@ -9,15 +9,19 @@ use File::Basename;
 use Getopt::Long;
 use JSON;
 
+use Term::ANSIColor qw( colored :constants ) ;
+use Term::ReadKey;
 use Toolkit;
 
-
-my @attrNames = qw( ApproximateNumberOfMessages ApproximateNumberOfMessagesDelayed ApproximateNumberOfMessagesNotVisible CreatedTimestamp DelaySeconds LastModifiedTimestamp MaximumMessageSize MessageRetentionPeriod ReceiveMessageWaitTimeSeconds VisibilityTimeout );
-my %opts = ();
+my @attrNames
+    = qw( ApproximateNumberOfMessages ApproximateNumberOfMessagesDelayed
+    ApproximateNumberOfMessagesNotVisible CreatedTimestamp DelaySeconds LastModifiedTimestamp
+    MaximumMessageSize MessageRetentionPeriod ReceiveMessageWaitTimeSeconds VisibilityTimeout );
+my %opts = ( poll => 10 );
 if (
   !GetOptions(
-    \%opts,    'prefix=s', 'queue=s', 'attributes=s@',
-    'receive', 'verbose',  'commit', 'purge',
+    \%opts,   'prefix=s', 'queue=s', 'listen',
+    'poll=i', 'purge',    'verbose', 'commit'
   )
     )
 {
@@ -30,69 +34,158 @@ exit(0);
 sub main {
 
   my $sqs = CreateAwsClient('SQS');
-  my $json = JSON->new->allow_nonref();
+
+  my %dispatch = (
+    'summary'    => \&list_queues,
+    'show-queue' => \&show_queue,
+    'purge'      => \&purge_queue,
+    'listen'     => \&poll_queue,
+  );
+
+  my $action = 'summary';
+  $action = 'show-queue' if ( exists( $opts{'queue'} ) );
+  $action = 'purge'      if ( exists( $opts{'purge'} ) );
+  $action = 'listen'     if ( exists( $opts{'listen'} ) );
+
+  $dispatch{$action}->($sqs);
+}
+
+sub poll_queue {
+  my ($sqs) = @_;
+
+  if ( !exists( $opts{'queue'} ) ) {
+    message_err('must specify a queue to purge');
+    return;
+  }
+
+  my %urls = _get_queue_urls($sqs);
+
+  my $delay = 0;
+  $| = 1;
+  while (1) {
+    my ( $x, $y, $xp, $yp ) = GetTerminalSize();
+    my $status = 2 * $delay ;
+    my $pad    = $x - $status - 1;
+
+    print(  "\r\033[${pad}C" . colored( ['green on_black'], '-' x $status ) . "\r" );
+    foreach my $name ( sort keys %urls ) {
+      my $resp;
+      eval {
+        $resp = $sqs->ReceiveMessage(
+          QueueUrl          => $urls{$name},
+          VisibilityTimeout => 1
+        );
+      };
+      if ($@) {
+        message_err($@);
+        return;
+      }
+
+      my $mesg = $resp->Messages();
+      if ( scalar( @{$mesg} ) ) {
+        foreach my $m ( @{$mesg} ) {
+          my $body =  $m->{'Body'};
+          eval{ $body = JSON->new()->utf8->pretty->encode(decode_json($body)); };
+          dump_note( title => $m->{'MessageId'}, data => $body );
+        }
+          $delay = 0;
+      } else {
+        if( $delay == 12 ){
+        print(  "\r\033[${pad}C" . colored( ['red on_black'], '*' x $status ) . "\r" );
+        }else{
+        print(  "\r\033[${pad}C" . colored( ['yellow on_black'], '*' x $status ) . "\r" );
+        }
+        $delay++ if ( $delay < 12 );
+      }
+      sleep( 5 * $delay );
+    }
+  }
+}
+
+sub purge_queue {
+  my ($sqs) = @_;
+
+  if ( !exists( $opts{'queue'} ) ) {
+    message_err('must specify a queue to purge');
+    return;
+  }
+
+  my %urls = _get_queue_urls($sqs);
+  foreach my $name ( sort keys %urls ) {
+    message("Purging: $name");
+    eval { $sqs->PurgeQueue( QueueUrl => $urls{$name} ) };
+    if ($@) {
+      message_err($@);
+      return;
+    }
+  }
+
+  show_queue($sqs);
+}
+
+sub show_queue {
+  my ($sqs) = @_;
+
+  my $resp = $sqs->ListQueues( QueueNamePrefix => $opts{'queue'} );
+  if ( scalar @{ $resp->QueueUrls() } == 0 ) {
+    message_err("Unable to find queue: [$opts{'queue'}]");
+    return;
+  }
+
+  my $url = shift( @{ $resp->QueueUrls() } );
+  $resp = $sqs->GetQueueAttributes(
+    QueueUrl       => $url,
+    AttributeNames => \@attrNames
+  );
+
+  my $attr = $resp->Attributes();
+  my $wide = 0;
+  foreach my $a ( sort keys %{$attr} ) {
+    $wide = length($a) if ( length($a) > $wide );
+  }
+
+  my %tree;
+  my $name = basename($url);
+  my $path = dirname($url);
+
+  foreach my $a ( sort keys %{$attr} ) {
+    my $key = sprintf( "\%-${wide}s => \%s", $a, $attr->{$a} );
+    $tree{$path}{$name}{$key} = {};
+  }
+
+  dump_tree( \%tree );
+}
+
+sub list_queues {
+  my ($sqs) = @_;
+
+  my %urls = _get_queue_urls($sqs);
+  my %summary;
+  foreach my $url ( keys %urls ) {
+    my $name = basename($url);
+    my $path = dirname($url);
+    $summary{$path}{$name} = {};
+  }
+  dump_tree( \%summary );
+}
+
+sub _get_queue_urls {
+  my ($sqs) = @_;
 
   my $qnp = exists( $opts{'prefix'} ) ? $opts{'prefix'} : '';
   $qnp = exists( $opts{'queue'} ) ? $opts{'queue'} : $qnp;
 
-  my %summary; 
-  my $queues = $sqs->ListAllQueues(sub{
-    my $q = shift;
-    my $name = basename($q);
-    my $path = dirname($q);
-    $summary{$path}{$name} = {};
-  }, QueueNamePrefix => $qnp);
+  my %retval;
+  my $queues = $sqs->ListAllQueues(
+    sub {
+      my $q    = shift;
+      my $name = basename($q);
+      $retval{$name} = $q;
+    },
+    QueueNamePrefix => $qnp
+  );
 
-  if ( !exists( $opts{'queue'} ) ) {
-  dump_tree(\%summary);
-  } else {
-
-    if ( $opts{'receive'} ) {
-      foreach my $path ( sort keys %summary ) {
-        foreach my $qName ( @{ $summary{$path} } ) {
-          my $resp = qx{ aws sqs receive-message --queue-url $path/$qName };
-          message($resp);
-        }
-      }
-    } else {
-      if( $opts{'purge'} ){
-      foreach my $path ( sort keys %summary ) {
-        foreach my $qName ( @{ $summary{$path} } ) {
-          my $resp = qx{ aws sqs purge-queue --queue-url $path/$qName };
-          message($resp);
-        }
-      }
-      }else{
-
-      my $attrNames = 'All';
-      $attrNames = join( ' ', @{ $opts{'attributes'} } )
-          if ( exists( $opts{'attributes'} ) );
-
-      
-      foreach my $path ( sort keys %summary ) {
-        message($path);
-        my @cols;
-        my @table;
-        foreach my $qname (keys %{ $summary{$path} } ) {
-          my $ref = $summary{$path}{$qname};
-          my $resp = $sqs->GetQueueAttributes(QueueUrl => "$path/$qname", AttributeNames => \@attrNames);
-          my $attr = $resp->Attributes();
-          my $wide = 0;
-          foreach my $a (sort keys %{$attr}){
-            $wide = length($a) if( length($a) > $wide );
-          }
-          foreach my $a (sort keys %{$attr}){
-            next if( $a eq 'Policy' );
-            my $key = sprintf("\%-${wide}s => \%s", $a , $attr->{$a});
-            $ref->{$key}  = {};
-          }
-          }
-        }
-  dump_tree(\%summary);
-      }
-    }
-  }
-
+  return wantarray ? %retval : \%retval;
 }
 
 __END__ 
