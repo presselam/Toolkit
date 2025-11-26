@@ -1,0 +1,24 @@
+[project]
+name = "{$name}"
+readme = "README.md"
+requires-python = ">={$version}"
+classifiers = [
+    "Programming Language :: Python :: {$version}",
+    "Topic :: Scientific/Engineering :: GIS",
+]
+dynamic = ["version"]
+
+dependencies = [
+{$packages}
+]
+
+[project.optional-dependencies]
+test = [
+{$devonly}
+]
+
+[tool.setuptools]
+package-dir = \{ "" = "." \}
+
+[tool.black]
+line-length = 125

@@ -20,8 +20,10 @@ my %services = GetServices();
 my %opts     = ( 'environment' => 'xc', );
 if (
   !GetOptions(
-    \%opts, ( keys %services ), 'log',           'up',
-    'down',                     'environment=s', 'verbose'
+    \%opts, ( keys %services ),
+    'log',           'up',
+    'down',          'refresh',
+    'environment=s', 'verbose'
   )
     )
 {
@@ -38,72 +40,93 @@ sub main {
 
   my @groups = map {"$_->{'name_prefix'}-asg-$opts{'environment'}"} @worklist;
 
-  if ( exists( $opts{'log'} ) ) {
-    my $obj = $asg->DescribeScalingActivities(
-      'AutoScalingGroupName' => $groups[0], );
-    printObject($obj) if ( exists( $opts{'verbose'} ) );
+  my %dispatch = (
+    'describe'   => \&describe_asg,
+    'activities' => \&activities_log,
+    'refresh'    => \&instance_refresh,
+  );
 
-    tie( my %summary, 'Tie::IxHash' );
-    foreach my $activity ( sort { $a->{'StartTime'} cmp $b->{'StartTime'} }
-      @{ $obj->{'Activities'} } )
-    {
-      my ( $start, $end, $desc, $status )
-          = @{$activity}{ 'StartTime', 'EndTime', 'Description',
-        'StatusCode' };
+  my $action = 'describe';
+  $action = 'activities' if ( exists( $opts{'log'} ) );
+  $action = 'refresh'    if ( exists( $opts{'refresh'} ) );
 
-      my ( $date, $time ) = split( /T/, $start );
+  $dispatch{$action}->( $asg, $groups[0] );
+}
 
-      unless ( exists( $summary{$date} ) ) {
-        tie( my %times, 'Tie::IxHash' );
-        $summary{$date} = \%times;
-      }
-      unless ( exists( $summary{$date}{$time} ) ) {
-        tie( my %details, 'Tie::IxHash' );
-        $summary{$date}{$time} = \%details;
-      }
+sub describe_asg {
+  my ( $asg, $group ) = @_;
 
-      $summary{$date}{$time}{"Mesg  : $desc"}   = {};
-      $summary{$date}{$time}{"Status: $status"} = {};
-      $summary{$date}{$time}{"Finish: $end"}    = {};
+  my $obj
+      = $asg->DescribeAutoScalingGroups( 'AutoScalingGroupNames' => [$group],
+      );
+  printObject($obj) if ( exists( $opts{'verbose'} ) );
+
+  my @table = ( [qw(name desired min max grace launch version)] );
+  foreach my $group ( @{ $obj->{'AutoScalingGroups'} } ) {
+    my @row = @{$group}{
+      'AutoScalingGroupName', 'DesiredCapacity',
+      'MinSize',              'MaxSize',
+      'HealthCheckGracePeriod'
+    };
+
+    push( @row, $group->{'LaunchTemplate'}{'LaunchTemplateName'} );
+    push( @row, $group->{'LaunchTemplate'}{'Version'} );
+
+    push( @table, \@row );
+
+    my $gsize = undef;
+    $gsize = 0 if ( $opts{'down'} );
+    $gsize = 1 if ( $opts{'up'} );
+    if ( defined($gsize) ) {
+      $asg->UpdateAutoScalingGroup(
+        AutoScalingGroupName => $group->{'AutoScalingGroupName'},
+        MaxSize              => $gsize,
+        MinSize              => $gsize,
+        DesiredCapacity      => $gsize,
+      );
     }
-
-    say("Activity");
-    dump_tree( \%summary );
-
-  } else {
-    my $obj = $asg->DescribeAutoScalingGroups(
-      'AutoScalingGroupNames' => \@groups, );
-    printObject($obj) if ( exists( $opts{'verbose'} ) );
-
-    my @table = ( [qw(name desired min max grace launch version)] );
-    foreach my $group ( @{ $obj->{'AutoScalingGroups'} } ) {
-      my @row = @{$group}{
-        'AutoScalingGroupName', 'DesiredCapacity',
-        'MinSize',              'MaxSize',
-        'HealthCheckGracePeriod'
-      };
-
-      push( @row, $group->{'LaunchTemplate'}{'LaunchTemplateName'} );
-      push( @row, $group->{'LaunchTemplate'}{'Version'} );
-
-      push( @table, \@row );
-
-      my $gsize = undef;
-      $gsize = 0 if ( $opts{'down'} );
-      $gsize = 1 if ( $opts{'up'} );
-      if ( defined($gsize) ) {
-        $asg->UpdateAutoScalingGroup(
-          AutoScalingGroupName => $group->{'AutoScalingGroupName'},
-          MaxSize              => $gsize,
-          MinSize              => $gsize,
-          DesiredCapacity      => $gsize,
-        );
-      }
-    }
-
-    dump_table( table => \@table );
-
   }
+
+  dump_table( table => \@table );
+}
+
+sub activities_log {
+  my ( $asg, $group ) = @_;
+
+  my $obj
+      = $asg->DescribeScalingActivities( 'AutoScalingGroupName' => $group, );
+  printObject($obj) if ( exists( $opts{'verbose'} ) );
+
+  my %states = (
+    Successful => \&green,
+  );
+
+  foreach my $activity ( sort { $a->{'StartTime'} cmp $b->{'StartTime'} } @{ $obj->{'Activities'} } ) {
+    my ( $start, $end, $desc, $status )
+        = @{$activity}{ 'StartTime', 'EndTime', 'Description', 'StatusCode' };
+  
+    my $fmt = \&magenta;
+    $fmt = $states{$status} if( exists($states{$status}) );
+    $status = $fmt->($status);
+
+    say("$start - ($status) - $desc");
+  }
+
+
+  say("Activity");
+#  dump_tree( \%summary );
+}
+
+sub instance_refresh {
+  my ($asg, $group) = @_;
+
+  message("Refreshing $group");
+  my $resp = $asg->StartInstanceRefresh(
+    AutoScalingGroupName => $group,
+  );
+
+  printObject($resp);
+
 }
 
 __END__

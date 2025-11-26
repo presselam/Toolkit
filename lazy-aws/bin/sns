@@ -4,6 +4,7 @@ use 5.020;
 use warnings;
 use autodie;
 
+use Arbeiter;
 use Getopt::Long;
 use DateTime;
 use DateTime::Format::ISO8601;
@@ -13,7 +14,7 @@ use URI;
 use Toolkit;
 
 my %opts;
-if ( !GetOptions( \%opts, 'topic=s@', 'match=s@') ) {
+if ( !GetOptions( \%opts, 'publish=s','create=s@', 'topic=s@', 'match=s@' ) ) {
   die("Invalid incantation\n");
 }
 
@@ -22,26 +23,83 @@ exit(0);
 
 sub main {
 
-  my $json = JSON->new->allow_nonref();
+  my $sns = CreateAwsClient('SNS');
+
+  my %dispatch = (
+   'summary'    => \&list,
+   'describe' => \&describe,
+   'publish'      => \&publish,
+   'create'     => \&create,
+  );
+
+  my $action = 'summary';
+  $action = 'describe' if ( exists( $opts{'topic'} ) );
+  $action = 'publish'      if ( exists( $opts{'publish'} ) );
+  $action = 'create'     if ( exists( $opts{'create'} ) );
+
+  $dispatch{$action}->($sns);
+}  
+
+sub create{
+  my ($sns) = @_;
+
+  foreach my $topic (@{$opts{'create'}}){
+    message("Topic:");
+    my $result = $sns->CreateTopic( Name => $topic);
+    printObject($result);
+  }
+}
+
+sub describe{
+  my ($sns) = @_;
+
+  foreach my $topic (@{$opts{'topic'}}){
+    message("Topic:");
+    my $result = $sns->GetTopicAttributes();
+    printObject($result);
+  }
+}
+
+sub list{
+  my ($sns) = @_;
+
   my %summary;
-  my @topics;
-    my $resp = qx{ aws sns list-subscriptions };
-    my $obj = $json->decode($resp);
-    foreach my $sub (@{$obj->{'Subscriptions'}}){
-      my ($p,$e,$t) = @{$sub}{'Protocol','Endpoint','TopicArn'};
+  my $resp = $sns->ListTopics();
 
-      if( exists($opts{'topic'}) ){
-        my $re = join('|', @{$opts{'topic'}});
-        next unless( $t =~ /($re)/ );
+  my %seen;
+  foreach my $t (@{$resp->Topics()}){
+    if( exists($opts{'match'}) ) {
+      my $filter = 0;
+      foreach my $keyword (@{$opts{'match'}}){
+      $filter = 1 unless( $t->TopicArn() =~ /$keyword/ );
       }
+      next if( $filter );
+    }
+    my @parts = split( /:/, $t->TopicArn() );
+    my $topic = pop(@parts);
+    my $acct  = join( ':', @parts );
+    $summary{$acct}{$topic}= {};
+    $seen{$t->TopicArn()} = undef;
+  }
 
-      my @parts = split(/:/, $t);
-      my $topic = pop(@parts);
-      my $acct = join(':', @parts);
-      $summary{$acct}{$topic}{$p}{$e} = {};
+  $resp = $sns->ListSubscriptions();
+  foreach my $sub ( @{ $resp->{'Subscriptions'} } ) {
+    my ( $p, $e, $t ) = @{$sub}{ 'Protocol', 'Endpoint', 'TopicArn' };
+
+    next unless( exists($seen{$t}) );
+
+    if ( exists( $opts{'topic'} ) ) {
+      my $re = join( '|', @{ $opts{'topic'} } );
+      next unless ( $t =~ /($re)/ );
     }
 
-  say( 'SNS Topics');
+    my @parts = split( /:/, $t );
+    my $topic = pop(@parts);
+    my $acct  = join( ':', @parts );
+    $summary{$acct}{$topic}{$p}{$e} = {};
+  }
+
+  say('SNS Topics');
   dump_tree( \%summary );
 }
 

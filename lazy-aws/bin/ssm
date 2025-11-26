@@ -21,7 +21,7 @@ my $CONF     = GetConfiguration();
 my %services = GetServices();
 
 my %opts = ();
-if ( !GetOptions( \%opts, 'parameter=s@', 'verbose', 'commit', ) ) {
+if ( !GetOptions( \%opts, 'filter=s@',  'parameter=s@', 'verbose', 'commit', ) ) {
   die("Invalid incantation\n");
 }
 
@@ -40,6 +40,14 @@ sub main {
   my $token      = $parameters->NextToken;
   while ($token) {
     foreach my $param ( @{ $parameters->Parameters } ) {
+      if( exists($opts{'filter'}) ){
+        my $toskip = 0;
+        foreach my $regex (@{$opts{'filter'}}){
+          $toskip = 1 unless( $param->{'Name'} =~ /$regex/ );
+
+        }
+        next if( $toskip );
+      }
       $param->{'_dtg'} = strftime( '%F %X', gmtime( $param->{'LastModifiedDate'} ) );
       push( @table, [ @{$param}{ 'Name', 'DataType', '_dtg', 'Version' }] );
     }
@@ -52,7 +60,7 @@ sub main {
   }else{
     foreach my $name (@{$opts{'parameter'}}){
       my $ref   = $ssm->GetParameter( Name => $name );
-      my $ref = $ref->{'Parameter'};
+      $ref = $ref->{'Parameter'};
       my $value =  $ref->{'Value'} ;
       dump_note(title => $ref->{'Name'}, data => $value);
     }

@@ -13,7 +13,11 @@ use Toolkit;
 
 my %opts = (
   spooldir => '.',
-  version  => '3.10',
+  version  => '3.11',
+  'devpackage' => [
+    "pytest==7.2.0",
+    "coverage==7.2.5",
+  ],
 );
 if (
   !GetOptions(
@@ -39,21 +43,23 @@ sub main {
   message('Making Directories');
   my $dir = "$opts{'spooldir'}/$opts{'id'}";
   mkdir($dir) unless ( -d $dir );
-  mkdir("$dir/src") unless ( -d "$dir/src" );
 
-  message('Creating Pipfile');
-  my $pip      = read_file("$ENV{'HOME'}/.templates/pipfile.tmpl");
+  foreach my $subdir (grep{ !-d "$dir/$_" } qw{ src test }){
+    mkdir("$dir/$subdir");
+  }
+
+  message('Creating Packaging');
+
+  my $pip      = read_file("$ENV{'HOME'}/.templates/pyproject.tmpl");
   my $template = Text::Template->new( TYPE => 'STRING', SOURCE => $pip );
 
-  my $packages = getPackageList('package');
-  my $devonly  = getPackageList('devpackage');
-
-  open( my $fh, '>', "$dir/Pipfile" );
+  open( my $fh, '>', "$dir/pyproject.toml" );
   $fh->print(
     $template->fill_in(
       HASH => {
-        packages => $packages,
-        devonly  => $devonly,
+        name => $opts{'id'},
+        packages => getPackages('package'),
+        devonly =>  getPackages('devpackage'),
         version  => $opts{'version'},
       }
     )
@@ -73,21 +79,15 @@ sub main {
   }
 }
 
-sub getPackageList {
+sub getPackages{
   my ($key) = @_;
 
-  my %plist;
-  my $width = 0;
-  foreach my $pkg ( @{ $opts{$key} } ) {
-    my ( $name, $ver ) = $pkg =~ /^(.+?)([<!=>~].+){0,1}$/;
-    $ver          = '*' unless ($ver);
-    $plist{$name} = $ver;
-    $width        = length($name) if ( length($name) > $width );
+  my @retval;
+  if( exists($opts{$key}) ){
+    push(@retval, @{$opts{$key}});
   }
 
-  return join( "\n",
-    map { sprintf( '%-' . $width . 's = "%s"', $_, $plist{$_} ) }
-    sort keys %plist );
+  return '    "' . join(qq{",\n    "}, @retval) . '"';
 }
 
 __END__ 

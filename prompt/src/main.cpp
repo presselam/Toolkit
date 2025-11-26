@@ -160,8 +160,8 @@ int cleanInt(std::string& token){
 }
 
 std::string dockerPlate(){
-  std::vector<std::string> output = qx("docker info --format '{{json .}}'");
-  if( output.size() == 0 ){
+  std::vector<std::string> output = qx("docker info --format '{{.Containers}} {{.ContainersRunning}} {{.ContainersPaused}} {{.ContainersStopped}}'");
+  if( output.size() != 1 ){
     return "";
   }
 
@@ -173,27 +173,18 @@ std::string dockerPlate(){
   for(auto i : output){
     std::stringstream ss(i);
     std::string token;
-    while( getline(ss, token, '"') ){
-      if( token == "Containers" ){
-        getline(ss, token, '"');
-        total = cleanInt(token);
-      }
+    
+    getline(ss, token, ' ');
+    total = cleanInt(token);
 
-      if( token == "ContainersRunning" ){
-        getline(ss, token, '"');
-        running = cleanInt(token);
-      }
+    getline(ss, token, ' ');
+    running = cleanInt(token);
 
-      if( token == "ContainersPaused" ){
-        getline(ss, token, '"');
-        paused = cleanInt(token);
-      }
+    getline(ss, token, ' ');
+    paused = cleanInt(token);
 
-      if( token == "ContainersStopped" ){
-        getline(ss, token, '"');
-        stopped = cleanInt(token);
-      }
-    }
+    getline(ss, token, ' ');
+    stopped = cleanInt(token);
   }
 
   std::string retval = "\U0001F40B";
@@ -224,7 +215,9 @@ std::vector<std::string> qx(const char* cmd){
   std::vector<std::string> retval;
   std::stringstream ss(output);
   std::string token;
+//  std::cout << "[" << cmd << "]" << std::endl;
   while(std::getline(ss, token, '\n')){
+//     std::cout << "  [" << token << "]" << std::endl;
      retval.push_back(token);
   }
 
