@@ -3,17 +3,20 @@
    <modelVersion>4.0.0</modelVersion>
 
    <groupId>com.nextgenfed</groupId>
-   <artifactId>{$artifact}</artifactId>
+   <artifactId>{{$PACKAGE}}</artifactId>
    <packaging>jar</packaging>
    <version>0.0.1</version>
-   <name>{$artifact}</name>
+   <name>{{$PACKAGE}}</name>
 
    <properties>
      <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+     <maven.compiler.source>21</maven.compiler.source>
+     <maven.compiler.target>21</maven.compiler.target>
+
    </properties>
 
    <dependencies>
-     {$packages}
+     {{$packages}}
      <dependency>
        <groupId>org.apache.logging.log4j</groupId>
        <artifactId>log4j-api</artifactId>
@@ -42,13 +45,9 @@
      <plugins>
        <plugin>
          <artifactId>maven-compiler-plugin</artifactId>
-         <version>3.8.0</version>
-         <configuration>
-           <source>{$version}</source>
-           <target>{$version}</target>
-         </configuration>
+         <version>3.14.1</version>
       </plugin>
-      {$executable}
+      {{$executable}}
     </plugins>
    </build>
 

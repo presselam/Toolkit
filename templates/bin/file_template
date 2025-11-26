@@ -1,26 +1,33 @@
 #!/usr/bin/perl
 
 use strict;
+
+use Cwd qw( cwd abs_path );
+use File::Basename;
 use Text::Template;
-use Perl6::Slurp;
+
+my $bindir = dirname($0);
+my $appdir = dirname($bindir);
 
 my %INFO = (
-    FILENAME      => $ARGV[0] || "NAME",
-    'MODULE NAME' => $ARGV[0] || "MODULE::NAME",
-    'RT NAME'     => $ARGV[0] || "MODULE-NAME",
-    AUTHOR        => 'Andrew Pressel',
-    EMAIL         => 'apressel@nextgenfed.com',
-    YEAR => 1900 + (localtime)[5],
-    DATE => join('-', 1900 + (localtime)[5],(localtime)[4],(localtime)[3]),
+  FILENAME   => $ARGV[0] || "NAME",
+  MODULENAME => $ARGV[0] || "MODULE::NAME",
+  RTNAME     => $ARGV[0] || "MODULE-NAME",
+  AUTHOR     => 'Andrew Pressel',
+  EMAIL      => 'apressel@nextgenfed.com',
+  YEAR       => 1900 + (localtime)[5],
+  DATE => join( '-', 1900 + (localtime)[5], (localtime)[4], (localtime)[3] ),
+  PACKAGE => basename( abs_path(cwd) ),
 );
 
 my %dispatch = (
-    '.sh'  => sub { scalar slurp( "$ENV{'HOME'}/.templates/bash.tmpl" ) },
-    '.pl'  => sub { scalar slurp( "$ENV{'HOME'}/.templates/perlscript.tmpl" ) },
-    '.pm'  => sub { scalar slurp( "$ENV{'HOME'}/.templates/perlmodule.tmpl" ) },
-    '.py' => sub { scalar slurp( "$ENV{'HOME'}/.templates/pyscript.tmpl" ) },
-    'pom.xml' => sub{ scalar slurp("$ENV{'HOME'}/.templates/pomxml.tmpl") },
-    'Pipfile' => sub{ scalar slurp("$ENV{'HOME'}/.templates/pipfile.tmpl") },
+  '.sh'     => "$appdir/.templates/bash.tmpl",
+  '.pl'     => "$appdir/.templates/perlscript.tmpl",
+  '.pm'     => "$appdir/.templates/perlmodule.tmpl",
+  '.py'     => "$appdir/.templates/pyscript.tmpl",
+  'pom.xml' => "$appdir/.templates/pomxml.tmpl",
+  'Pipfile' => "$appdir/.templates/pipfile.tmpl",
+  '.go'     => "$appdir/.templates/goscript.tmpl",
 );
 
 my $SUFFIX = q{([.][^.]+)\Z};
@@ -29,49 +36,52 @@ main();
 exit(0);
 
 sub main {
+  clean();
 
-    clean();
+  my ($type) = $INFO{FILENAME} =~ m{$SUFFIX};
+  my $file = $dispatch{$type} || $dispatch{$ARGV[0]};
 
-    my ($type) = $INFO{FILENAME} =~ m{$SUFFIX};
-
-    my $subref = $dispatch{$type} || $dispatch{$INFO{'FILENAME'}};
-    exit() unless( $subref );
-    print( filled_in( $subref->() ) );
+  exit() unless ($file);
+  print( filled_in($file) );
 }
 
 sub filled_in {
-    my ($str) = @_;
-    my $placeholder = join '|', map {"\Q$_\E"} reverse sort keys %INFO;
-    $str =~ s/<($placeholder)>/$INFO{$1}/g;
-    return $str;
+  my ($file) = @_;
+
+  my $tt = Text::Template->new(
+    TYPE       => 'FILE',
+    SOURCE     => $file,
+    DELIMITERS => [ "{{", "}}" ]
+  );
+  return $tt->fill_in( HASH => \%INFO );
 }
 
 sub clean {
 
-    for ( $INFO{'FILENAME'} ) {
-        s{^.*/lib/}{}g;
-        s{^lib/}{}g;
-    }
+  for ( $INFO{'FILENAME'} ) {
+    s{^.*/lib/}{}g;
+    s{^lib/}{}g;
+  }
 
-    for ( $INFO{'MODULE NAME'} ) {
-        s{$SUFFIX}{};
-        s{/}{::}g;
-        s{^.*::lib::}{}g;
-        s{^lib::}{}g;
-    }
+  for ( $INFO{'MODULENAME'} ) {
+    s{$SUFFIX}{};
+    s{/}{::}g;
+    s{^.*::lib::}{}g;
+    s{^lib::}{}g;
+  }
 
-    for ( $INFO{'MODULE NAME'} ) {
-        s{$SUFFIX}{};
-        s{/}{::}g;
-        s{^.*::lib::}{}g;
-        s{^lib::}{}g;
-    }
+  for ( $INFO{'MODULENAME'} ) {
+    s{$SUFFIX}{};
+    s{/}{::}g;
+    s{^.*::lib::}{}g;
+    s{^lib::}{}g;
+  }
 
-    for ( $INFO{'RT NAME'} ) {
-        s{$SUFFIX}{};
-        s{/}{-}g;
-        s{^.*-lib-}{}g;
-        s{^lib-}{}g;
-        tr/A-Z/a-z/;
-    }
+  for ( $INFO{'RTNAME'} ) {
+    s{$SUFFIX}{};
+    s{/}{-}g;
+    s{^.*-lib-}{}g;
+    s{^lib-}{}g;
+    tr/A-Z/a-z/;
+  }
 }
